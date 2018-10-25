@@ -36,7 +36,7 @@ func (this *PermController) PermAdd() {
 // router /api/perms [get]
 func (this *PermController) PermData() {
 	// 权限数据
-	data := []perm.CloudPerm{}
+	data := make([]perm.CloudPerm, 0)
 	q := sql.SearchSql(perm.CloudPerm{}, perm.SelectCloudPerm, sql.SearchMap{})
 	sql.Raw(q).QueryRows(&data)
 	setPermJson(this, data)
@@ -67,12 +67,13 @@ func (this *PermController) PermSave() {
 	setPermJson(this, data)
 }
 
+
 // 获取权限数据
 // 2018-02-06 08:30
 // router /api/perms/name [get]
 func (this *PermController) PermDataName() {
 	// 权限数据
-	data := []perm.CloudPerm{}
+	data := make([]perm.CloudPerm, 0)
 	q := sql.SearchSql(perm.CloudPerm{}, perm.SelectCloudPerm, sql.SearchMap{})
 	sql.Raw(q).QueryRows(&data)
 	setPermJson(this, data)
@@ -81,7 +82,7 @@ func (this *PermController) PermDataName() {
 // 权限数据
 // @router /api/perm [get]
 func (this *PermController) PermDatas() {
-	data := []perm.CloudPerm{}
+	data := make([]perm.CloudPerm, 0)
 	searchMap := sql.SearchMap{}
 	id := this.Ctx.Input.Param(":id")
 	key := this.GetString("search")

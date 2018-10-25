@@ -244,6 +244,10 @@
                     <li class="menu-title">全局大盘</li>
                     <li>
                         <a href="/index" target="_self" aria-expanded="true"><i
+                                class="fi-help"></i><span> 快捷入口 </span></a>
+                    </li>
+                    <li>
+                        <a href="/shortcut" target="_self" aria-expanded="true"><i
                                 class="fi-help"></i><span> 概览 </span></a>
                     </li>
                     <li class="">
@@ -258,9 +262,15 @@
                                     <li><a href="/application/app/list" target="_self">应用管理</a></li>
                                     <li><a href="/application/service/list" target="_self">服务管理</a></li>
                                     <li><a href="/application/container/list" target="_self">容器管理</a></li>
-                                    <li><a href="/application/template/list" target="_self">应用模板</a></li>
                                     <!--<li><a href="/application/app/service/envfile" target="_self">环境配置文件</a></li>-->
                                     <li><a href="/application/configure/list" target="_self">配置管理</a></li>
+                                </ul>
+                            </li>
+                            <li class=""><a href="javascript: void(0);" aria-expanded="true"><i class="fa fa-send-o"></i>服务编排<span
+                                    class="menu-arrow"></span></a>
+                                <ul class="nav-third-level nav" aria-expanded="true" style="">
+                                    <li><a href="/application/template/list" target="_self">应用模板</a></li>
+                                    <li><a href="/application/template/deploy/history" target="_self">编排历史</a></li>
                                 </ul>
                             </li>
                             <li class=""><a href="javascript: void(0);" aria-expanded="true"><i
@@ -300,6 +310,13 @@
                                     <li><a href="/pipeline/history/list" target="_self">运行历史</a></li>
                                 </ul>
                             </li>
+                            <li class=""><a href="javascript: void(0);" aria-expanded="true"><i class="fa fa-hand-grab-o"></i>批量部署<span
+                                    class="menu-arrow"></span></a>
+                                <ul class="nav-third-level nav " aria-expanded="true" style="">
+                                    <li><a href="/ci/batch/list" target="_self">部署配置</a></li>
+                                    <li><a href="/ci/batch/history/list" target="_self">部署历史</a></li>
+                                </ul>
+                            </li>
                         </ul>
                     </li>
                     <li class="">
@@ -328,10 +345,25 @@
                         </a>
                         <ul class="nav-second-level-3 nav" aria-expanded="true" style="">
                             <li>
-                                <a href="#" target="_self" aria-expanded="true"><i
-                                        class="mdi mdi-settings"></i>
-                                    <span> 日志查看 </span></a>
+                                <a href="/log/datasrc/list" target="_self" aria-expanded="true"><i
+                                        class="fa fa-dashcube"></i><span> 数据源配置 </span></a>
                             </li>
+                            <li>
+                                <a  href="/log/driver/list" target="_self" aria-expanded="true"><i
+                                        class="fa fa-database"></i><span> 日志驱动配置 </span></a>
+                            </li>
+                            <li>
+                                <a href="/log/index" target="_self" aria-expanded="true"><i
+                                        class="fa fa-location-arrow"></i><span> 日志查看 </span></a>
+                            </li>
+                            {{/*<li>*/}}
+                                {{/*<a href="/log/filter" aria-expanded="true"><i class="fa  fa-filter"></i>*/}}
+                                    {{/*<span> 过滤器 </span> <span class=""></span></a>*/}}
+                            {{/*</li>*/}}
+                            {{/*<li>*/}}
+                                {{/*<a href="/log/history" aria-expanded="true"><i class="fa  fa-history"></i>*/}}
+                                    {{/*<span> 查询历史</span> <span class=""></span></a>*/}}
+                            {{/*</li>*/}}
                         </ul>
                     </li>
                     <li class="">
@@ -344,15 +376,15 @@
                                         class="fa fa-server"></i>
                                     <span> 集群管理 </span></a>
                             </li>
-                            <li>
-                                <a href="javascript: void(0);" aria-expanded="true"><i class="fa fa-database"></i>
-                                    <span> 存储管理 </span> <span class="menu-arrow"></span></a>
-                                <ul class="nav-third-level nav" aria-expanded="true">
-                                    <li><a href="/base/storage/list" target="_self">存储卷管理</a></li>
-                                    <li><a href="/base/storage/server/list" target="_self">存储服务器管理</a></li>
-                                    <li><a href="/storage/snapshot/list" target="_self">快照管理</a></li>
-                                </ul>
-                            </li>
+                            {{/*<li>*/}}
+                                {{/*<a href="javascript: void(0);" aria-expanded="true"><i class="fa fa-database"></i>*/}}
+                                    {{/*<span> 存储管理 </span> <span class="menu-arrow"></span></a>*/}}
+                                {{/*<ul class="nav-third-level nav" aria-expanded="true">*/}}
+                                    {{/*<li><a href="/base/storage/list" target="_self">存储卷管理</a></li>*/}}
+                                    {{/*<li><a href="/base/storage/server/list" target="_self">存储服务器管理</a></li>*/}}
+                                    {{/*<li><a href="/storage/snapshot/list" target="_self">快照管理</a></li>*/}}
+                                {{/*</ul>*/}}
+                            {{/*</li>*/}}
                             <li>
                                 <a href="javascript: void(0);" aria-expanded="true"><i class="fa fa-sitemap"></i>
                                     <span> 网络管理 </span> <span class="menu-arrow"></span></a>
@@ -363,7 +395,7 @@
                             </li>
                             <li>
                                 <a href="javascript: void(0);" aria-expanded="true"><i class="fa fa-newspaper-o"></i>
-                                    <span> 资源配置 </span> <span class="menu-arrow"></span></a>
+                                    <span> 资源配额 </span> <span class="menu-arrow"></span></a>
                                 <ul class="nav-third-level   nav" aria-expanded="true">
                                     <li><a href="/base/quota/list" target="_self">资源空间</a></li>
                                     <li><a href="/base/service/list" target="_self">服务用量</a></li>
@@ -381,8 +413,7 @@
                                     <span> 操作日志 </span> <span class="menu-arrow"></span></a>
                                 <ul class="nav-third-level nav" aria-expanded="true">
                                     <li>
-                                        <a href="/system/operlog/list" aria-expanded="true"><i
-                                                class="fa fa-history"></i>
+                                        <a href="/system/operlog/list" aria-expanded="true">
                                             <span> 审计日志 </span></a>
                                     </li>
                                 </ul>
@@ -414,6 +445,7 @@
                                 <ul class="nav-third-level nav" aria-expanded="true">
                                     <li><a href="/system/users/user/list">用户管理</a></li>
                                     <li><a href="/system/users/groups/list">部门团队管理</a></li>
+                                    <li><a href="/system/users/perm/list">用户权限分配</a></li>
                                 </ul>
                             </li>
                             <li>

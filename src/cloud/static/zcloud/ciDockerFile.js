@@ -1,12 +1,15 @@
 
 // 添加直接
-function addDockerFile(fileId) {
+function addDockerFile(fileId,copy) {
     if(!fileId){
         fileId = 0
     }
-    var url = "/ci/dockerfile/add"
-    var result = get({FileId:fileId}, url)
-    $("#add_file_html").html(result)
+    if(!copy){
+        copy = ""
+    }
+    var url = "/ci/dockerfile/add";
+    var result = get({FileId:fileId, Copy:copy}, url);
+    $("#add_file_html").html(result);
     $("#add_post_html").modal("toggle")
 }
 
@@ -52,12 +55,12 @@ function loadDockerFileData(key) {
         "paginationType": "full_numbers", // 页码类型
         "destroy": true,
         "processing": true,
-        "bLengthChange": false,
+        "bLengthChange": true,
         "bPaginate": true, //是否显示（应用）分页器
         "serverSide": true,
         "bInfo": true, //是否显示页脚信息，DataTables插件左下角显示记录数
         "scrollX": true, // 是否允许左右滑动
-        "displayLength": 10, // 默认长度
+        "displayLength": 100, // 默认长度
         "ajax": { // 请求地址
             "url": "/api/ci/dockerfile?t=" + new Date().getTime() + "&search=" + key ,
             "type": 'get'
@@ -72,7 +75,8 @@ function loadDockerFileData(key) {
             {"data": "LastModifyTime","sWidth":"10%"},
             {"data": "FileId","sWidth":"7%", "mRender": function (data) {
                     return '<button type="button" title="更新" onclick="addDockerFile(' + data + ')" class="btn btn-xs rb-btn-oper"><i class="fa fa-pencil"></i></button>&nbsp;' +
-                        '<button type="button"  title="删除" onClick="deleteDockerFileSwal(' + data + ')" class="delete-groups btn btn-xs rb-btn-oper"><i class="fa fa-trash-o"></i></button>';
+                        '<button type="button" title="更新" onclick="addDockerFile(' + data + ',1)" class="btn btn-xs rb-btn-oper"><i class="fa fa-copy"></i></button>&nbsp;' +
+                    '<button type="button"  title="删除" onClick="deleteDockerFileSwal(' + data + ')" class="delete-groups btn btn-xs rb-btn-oper"><i class="fa fa-trash-o"></i></button>';
             }
             },
         ],
@@ -90,9 +94,9 @@ function loadDockerFileData(key) {
  * @return {*}
  */
 function deleteDockerFile(id) {
-    var url = "/api/ci/dockerfile/"+id
-    var result = del({}, url)
-    result = JSON.stringify(result)
+    var url = "/api/ci/dockerfile/"+id;
+    var result = del({}, url);
+    result = JSON.stringify(result);
     return result
 }
 

@@ -14,6 +14,9 @@ import (
 	"time"
 	"cloud/models/ci"
 	"cloud/cache"
+	"cloud/userperm"
+	"cloud/models/log"
+	"cloud/models/ent"
 )
 
 // 2018-02-13 16:36
@@ -21,7 +24,7 @@ func getServiceData(searchMap sql.SearchMap, q string) []app.CloudAppService {
 	if q == "" {
 		q = app.SelectCloudAppService
 	}
-	data := []app.CloudAppService{}
+	data := make([]app.CloudAppService, 0)
 	searchSql := sql.SearchSql(
 		app.CloudAppService{}, q, searchMap)
 
@@ -80,7 +83,7 @@ func ExecUpdate(service app.CloudAppService, updateType string, username string)
 	if err == nil {
 		updateServiceData(service, username)
 		go updateContainerData(service)
-	}else{
+	} else {
 		logs.Error("ExecUpdate 失败 ", err.Error())
 	}
 	return err
@@ -145,20 +148,33 @@ func CronServiceCache() {
 
 // 2018-02-04
 // 从redis里获取应用服务运行状态数据
-func GetServiceRunData(data []app.CloudAppService) []k8s.CloudApp {
+func GetServiceRunData(data []app.CloudAppService, user string) []k8s.CloudApp {
 	//result := make([]interface{}, 0)
+	perm := userperm.GetResourceName("服务", user)
+	permApp := userperm.GetResourceName("应用", user)
+
 	result := make([]k8s.CloudApp, 0)
 	for _, d := range data {
+		// 不是自己创建的才检查
+		if d.CreateUser != user && user != "admin"{
+			pName := d.AppName+";"+d.ResourceName+";"+d.ServiceName
+			if ! userperm.CheckPerm(pName, d.ClusterName, d.Entname, perm) && len(user) > 0 {
+				if ! userperm.CheckPerm(d.AppName, d.ClusterName, d.Entname, permApp) {
+					continue
+				}
+			}
+		}
+
 		namespace := util.Namespace(d.AppName, d.ResourceName) +
-			d.ServiceName
-		if d.ServiceVersion != "" {
-			namespace = namespace + "--" + d.ServiceVersion
+			d.ServiceName  + d.Entname + d.ClusterName
+		if len(d.ServiceVersion) > 0 {
+			namespace = util.Namespace(namespace, d.ServiceVersion)
 		}
 		namespace += strconv.FormatInt(d.ServiceId, 10)
-
 		r := cache.ServiceCache.Get(namespace)
 		var v = k8s.CloudApp{}
 		status := util.RedisObj2Obj(r, &v)
+
 		if status {
 			result = append(result, v)
 		} else {
@@ -173,14 +189,49 @@ func GetServiceRunData(data []app.CloudAppService) []k8s.CloudApp {
 	return result
 }
 
-
-
 // 修改数据时公共数据
 // 2018-01-14 13:35
 func setChangeData(this *ServiceController) app.CloudAppService {
 	service := getService(this)
 	this.Data["data"] = service
 	return service
+}
+
+// 2018-10-03 14:57
+// 获取日志驱动
+func getLogDriver(ent string, cluster string) log.LogDataSource {
+	searchMap :=  sql.SearchMap{}
+	searchMap.Put("Ent", ent)
+	searchMap.Put("ClusterName", cluster)
+	searchMap.Put("DataType", "driver")
+	q := sql.SearchSql(log.LogDataSource{}, log.SelectLogDataSource,searchMap)
+	data := log.LogDataSource{}
+	sql.Raw(q).QueryRow(&data)
+	return data
+}
+
+// 获取环境英文名称
+func GetEntDescription(entname string)  string{
+	searchMap := sql.SearchMap{}
+	searchMap.Put("Entname", entname)
+	q := sql.SearchSql(ent.CloudEnt{}, ent.SelectCloudEnt, searchMap)
+	e := ent.CloudEnt{}
+	sql.Raw(q).QueryRow(&e)
+	return e.Description
+}
+
+// 设置filebeat需要的参数
+func setFilebeatParam(param k8s.ServiceParam, d app.CloudAppService)   k8s.ServiceParam{
+	if len(d.LogPath) > 0 {
+		dataDriver := getLogDriver(d.Entname, param.ClusterName)
+		param.LogPath = d.LogPath
+		param.Kafka = dataDriver.Address
+		if dataDriver.DriverType == "elasticsearch"{
+			param.ElasticSearch = dataDriver.Address
+		}
+		param.Ent = GetEntDescription(d.Entname)
+	}
+	return param
 }
 
 // 获取创建服务的配置参数
@@ -204,6 +255,16 @@ func getParam(d app.CloudAppService, user string) k8s.ServiceParam {
 	param.HealthData = d.HealthData
 	param.ResourceName = d.ResourceName
 	param.StorageData = d.StorageData
+	param.PortYaml = d.Yaml
+	param.NetworkMode = d.NetworkMode
+
+	param = setFilebeatParam(param, d)
+
+	// 关闭容器时间
+	if param.TerminationSeconds == 0 {
+		param.TerminationSeconds = 50
+	}
+
 	if d.ReplicasMax > param.Replicas {
 		param.ReplicasMax = d.ReplicasMax
 	} else {
@@ -225,9 +286,9 @@ func getParam(d app.CloudAppService, user string) k8s.ServiceParam {
 	config := d.ConfigureData
 	if config != "" {
 		configureData := make([]k8s.ConfigureData, 0)
-		configdata := make([]k8s.ConfigureData, 0)
-		json.Unmarshal([]byte(config), &configdata)
-		for _, v := range configdata {
+		configData := make([]k8s.ConfigureData, 0)
+		json.Unmarshal([]byte(config), &configData)
+		for _, v := range configData {
 			v.ConfigDbData = GetConfgData(v.DataName, d.ClusterName)
 			configureData = append(configureData, v)
 		}
@@ -275,13 +336,13 @@ func GetServiceData(name string, cluster string, appname string) app.CloudAppSer
 
 // 2018-02-01 15:15
 // 获取某个用户的所有服务
-func GetUserLbService(user string, clustername string, id string) []app.CloudAppService {
+func GetUserLbService(user string, clusterName string, id string) []app.CloudAppService {
 	data := make([]app.CloudAppService, 0)
 	searchMap := sql.GetSearchMapV(
 		"CreateUser",
 		user,
 		"ClusterName",
-		clustername)
+		clusterName)
 
 	if id != "" {
 		searchMap.Put("ServiceId", id)
@@ -293,6 +354,15 @@ func GetUserLbService(user string, clustername string, id string) []app.CloudApp
 		searchMap)
 	sql.Raw(searchSql).QueryRows(&data)
 	return data
+}
+
+// 2018-08-10 15:36
+// 数据写入redis
+func serviceToRedis(namespace string, id int64, sv k8s.CloudApp) {
+	cache.ServiceCache.Put(
+		namespace+strconv.FormatInt(id, 10),
+		util.ObjToString(sv),
+		time.Minute * 10)
 }
 
 // 2018-01-31 16:04
@@ -308,21 +378,30 @@ func GoServerThread(data []app.CloudAppService) {
 	for {
 		result = make([]interface{}, 0)
 		for _, d := range data {
-			namespace := util.Namespace(d.AppName, d.ResourceName) + d.ServiceName
+			namespace := util.Namespace(d.AppName, d.ResourceName) + d.ServiceName + d.Entname + d.ClusterName
 			if d.ServiceVersion != "" {
 				namespace = util.Namespace(namespace, d.ServiceVersion)
 			}
+
 			v, ok := appDatas.Get(namespace)
 			if ok {
 				sv := v.(k8s.CloudApp)
 				sv.ClusterName = d.ClusterName
-
-				cache.ServiceCache.Put(
-					namespace+strconv.FormatInt(d.ServiceId, 10),
-					util.ObjToString(sv),
-					time.Second*86400)
-
+				sv.CheckTime = time.Now().Unix()
+				sv.Domain = d.Domain
+				sv.Entname = d.Entname
+				serviceToRedis(namespace, d.ServiceId, sv)
 				result = append(result, v)
+			} else {
+				sv := k8s.CloudApp{}
+				r := cache.ServiceCache.Get(namespace + strconv.FormatInt(d.ServiceId, 10))
+				s := util.RedisObj2Obj(r, &sv)
+				now := time.Now().Unix()
+				if s && now-sv.CheckTime > 60 * 15 {
+					sv.Status = "False"
+					sv.AvailableReplicas = 0
+					serviceToRedis(namespace, d.ServiceId, sv)
+				}
 			}
 		}
 		if len(result) >= len(data) {
@@ -341,7 +420,7 @@ func GoServerThread(data []app.CloudAppService) {
 func goServiceData(d app.CloudAppService, appDatas *util.Lock) {
 
 	namespace := util.Namespace(d.AppName, d.ResourceName)
-	sname := namespace + d.ServiceName
+	sname := namespace + d.ServiceName + d.Entname + d.ClusterName
 	if d.ServiceVersion != "" {
 		sname = util.Namespace(sname, d.ServiceVersion)
 	}
@@ -374,11 +453,22 @@ func getService(this *ServiceController) app.CloudAppService {
 	searchMap := sql.SearchMap{}
 	id := this.Ctx.Input.Param(":id")
 	searchMap.Put("ServiceId", id)
-	searchMap.Put("CreateUser", getServiceUser(this))
-	service := app.CloudAppService{}
-	q := sql.SearchSql(service, app.SelectCloudAppService, searchMap)
-	sql.Raw(q).QueryRow(&service)
-	return service
+	user := getServiceUser(this)
+	perm := userperm.GetResourceName("服务", user)
+	permApp := userperm.GetResourceName("应用", user)
+
+	d := app.CloudAppService{}
+	q := sql.SearchSql(d, app.SelectCloudAppService, searchMap)
+	sql.Raw(q).QueryRow(&d)
+	// 不是自己创建的才检查
+	if d.CreateUser != user {
+		if ! userperm.CheckPerm(d.AppName+";"+d.ResourceName+";"+d.ServiceName, d.ClusterName, d.Entname, perm) {
+			if ! userperm.CheckPerm(d.AppName, d.ClusterName, d.Entname, permApp) {
+				return app.CloudAppService{}
+			}
+		}
+	}
+	return d
 }
 
 // 设置json数据
@@ -469,7 +559,7 @@ func CreateGreenService(ciData ci.CloudCiService, username string) (string, bool
 
 	serviceData.ImageTag = ciData.ImageName
 	serviceData.ServiceVersion = version
-	serviceData.ServiceName = serviceData.ServiceName
+	//serviceData.ServiceName = serviceData.ServiceName
 	serviceParam := getParam(serviceData, username)
 
 	yaml, err := k8s.CreateServicePod(serviceParam)

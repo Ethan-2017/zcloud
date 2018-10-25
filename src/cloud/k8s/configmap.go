@@ -41,7 +41,8 @@ func CreateConfigmap(param ServiceParam) {
 			update = true
 		}
 		if param.NoUpdateConfig == true && update {
-			return
+			logs.Error("配置不允许更新配置", v.DataName)
+			continue
 		}
 		//var d *unstructured.Unstructured
 		if update {
@@ -62,10 +63,14 @@ func getEnv(envs string) []map[string]interface{} {
 	if len(envs) < 3 {
 		return data
 	}
-	envdatas := strings.Split(envs, "\n")
-	for _, v := range envdatas {
+	envData := strings.Split(envs, "\n")
+	for _, v := range envData {
 		vs := strings.Split(v, "=")
 		if len(vs) < 2 {
+			continue
+		}
+		if string(vs[0][0]) == "#" ||  string(vs[0][0]) == " "  {
+			logs.Info("环境变量获取到注释", vs[0])
 			continue
 		}
 		temp := map[string]interface{}{
@@ -94,6 +99,54 @@ func getConfigKey(keys string) []map[string]interface{} {
 }
 
 // 加工磁盘卷数据
+// 2018-09-30 20:57 -6
+func getFilebeatVolumes(storageData string) ([]map[string]interface{}, []map[string]interface{}) {
+	if storageData == ""{
+		storageData = `[]`
+	}
+	storages := make([]map[string]interface{}, 0)
+	voluments := make([]map[string]interface{}, 0)
+	data := make([]StorageData, 0)
+	err := json.Unmarshal([]byte(storageData), &data)
+	if err != nil {
+		logs.Error("处理Volumes失败", err)
+		return storages, voluments
+	}
+
+	for k, p := range data {
+		data := make(map[string]interface{}, 0)
+		is := false
+
+		v := p.HostPath
+		if v[len(v)-1:len(v)] != "/" {
+			continue
+		}
+		// 使用物理机的存储
+		if len(p.HostPath) > 0 && strings.Contains(p.HostPath, "/") {
+			data = map[string]interface{}{
+				"name": "volume-filebeat-" + strconv.Itoa(k),
+				"emptyDir": map[string]interface{}{
+				},
+			}
+			is = true
+		}
+
+		if ! is {
+			continue
+		}
+		volumeMountsData := map[string]interface{}{
+			"name":      "volume-filebeat-" + strconv.Itoa(k),
+			"mountPath": p.ContainerPath,
+		}
+		storages = append(storages, data)
+		voluments = append(voluments, volumeMountsData)
+	}
+
+	fmt.Println("filebeat-", storages, voluments)
+	return storages, voluments
+}
+
+// 加工磁盘卷数据
 // 2018-01-11 13::57
 func getVolumes(storagesData string, configData []ConfigureData, param ServiceParam) ([]map[string]interface{}, []map[string]interface{}) {
 	if storagesData == ""{
@@ -101,7 +154,7 @@ func getVolumes(storagesData string, configData []ConfigureData, param ServicePa
 	}
 	storages := make([]map[string]interface{}, 0)
 	voluments := make([]map[string]interface{}, 0)
-	data := []StorageData{}
+	data := make([]StorageData, 0)
 	err := json.Unmarshal([]byte(storagesData), &data)
 	if err != nil {
 		logs.Error("处理Volumes失败", err)
@@ -193,6 +246,9 @@ func getVolumes(storagesData string, configData []ConfigureData, param ServicePa
 					"name":      "configmap-volume-"+strconv.Itoa(id),
 					"mountPath": conf.ContainerPath,
 				}
+				if conf.ContainerPath == "/etc/filebeat/" {
+					mountData["name"] = "filebeat-config-" + param.ServiceName
+				}
 				WriteMountDataToDb(conf.DataName, "", param.ClusterName, param.Namespace, conf.ContainerPath, param.Name)
 				voluments = append(voluments, mountData)
 			}
@@ -223,7 +279,7 @@ func WriteMountDataToDb(configname string, dataName string, cluster string, name
 	if dataName != "" {
 		searchMap.Put("DataName", dataName)
 	}
-	mounts := []CloudConfigureMount{}
+	mounts := make([]CloudConfigureMount, 0)
 	sql.Raw(sql.SearchSql(mountData, SelectCloudConfigureMount, searchMap)).QueryRows(&mounts)
 	var action string
 	if len(mounts) > 0 {

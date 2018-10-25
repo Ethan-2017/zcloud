@@ -99,7 +99,7 @@
                                                                 class="text-danger">*</span></label>
                                                         <div class="col-md-9">
                                                             <select class="selectpicker" name="Entname"
-                                                                    onchange="getEntClusterData($(this).val())"
+                                                                    onchange="getEntClusterData($(this).val());setAppRegistryServer($('#select-cluster-id').val(),'{{.data.ImageRegistry}}', '{{.data.ImageTag}}')"
                                                                     data-live-search="true" data-style="btn-default"
                                                                     id="select-entname-id">
                                                                 <option>请选择</option>
@@ -114,7 +114,7 @@
                                                                 class="text-danger">*</span></label>
                                                         <div class="col-md-9">
                                                             <select class="selectpicker" name="ClusterName"
-                                                                    onchange="setAppRegistryServer($(this).val())"
+                                                                    onchange="setAppRegistryServer($(this).val(),'{{.data.ImageRegistry}}', '{{.data.ImageTag}}')"
                                                                     data-live-search="true" data-style="btn-default"
                                                                     id="select-cluster-id">
                                                                 <option>请选择</option>
@@ -142,7 +142,7 @@
                                                         <div class="col-md-9">
                                                             <input type="text" nullmsg="必须填写" value="{{.data.AppName}}"
                                                                    validFunc="checkAppNameService"
-                                                                   errmsg="接受 A-Za-z0-9-_.() 并且最大长度不超过32,最小4个字符"
+                                                                   errmsg="接受 a-z0-9-_.() 并且最大长度不超过32,最小4个字符,只能小写字母 "
                                                                    onchange="checkChange('AppName')"
                                                                    name="AppName" id="AppName"
                                                                    class="form-control" id="AppName-1"
@@ -304,7 +304,26 @@
                                         <fieldset title="3">
                                             <legend>网络设置</legend>
                                             <div class="row m-t-20 left80">
-                                                <div class="col-md-12 top10">
+
+                                                <div class="col-md-12 top10" title="pod中运行的应用程序可以直接看到宿主主机的网络接口，宿主主机所在的局域网上所有网络接口都可以访问到该应用程序。">
+                                                    <div class="form-group">
+                                                        <label class="col-md-3 fw100 control-label top10">hostNetwork<span
+                                                                class="text-danger">*</span></label>
+                                                        <div class="col-md-2" style="margin-left: -1%;">
+                                                            <div class="checkbox checkbox-info left10">
+                                                                <input id="NetworkMode" value="1" type="checkbox"
+                                                                       name="NetworkMode">
+                                                                <label for="NetworkMode" class="fw100 control-label">
+                                                                </label>
+                                                            </div>
+                                                        </div>
+                                                        <div class="col-md-7" style="margin-left: -10%">
+                                                            <pre class="pre">pod中运行的应用程序可以直接看到宿主主机的网络接口，宿主主机所在的局域网上所有网络接口都可以访问到该应用程序<br>必须保证镜像端口在集群中是唯一的</pre>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div class="col-md-12 top10" id="container-port-id">
                                                     <div class="form-group">
                                                         <label
                                                                 class="col-md-3 fw100 control-label">容器暴露端口<span
@@ -315,6 +334,18 @@
                                                                    onchange="checkChange('ContainerPort');"
                                                                    class="form-control" value="80" name="ContainerPort"
                                                                    data-role="tagsinput" placeholder="添加端口"/>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-12 top10" title="配置域名后缀后,系统会在负载均衡自动添加该服务的负载均衡, 服务名.x.x.com, 请保持服务名是唯一的">
+                                                    <div class="form-group">
+                                                        <label
+                                                                class="col-md-3 fw100 control-label">域名后缀</label>
+                                                        <div class="col-md-9 tags-default">
+                                                            <input type="text" nullmsg="不能为空"
+                                                                   errmsg="必须为数字"
+                                                                   onchange="checkChange('Domain');"
+                                                                   class="form-control" value="" name="Domain" placeholder="格式为 x.x.com, 配置域名后缀后,系统会在负载均衡自动添加该服务的负载均衡, 服务名.x.x.com, 请保持服务名是唯一的"/>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -485,10 +516,28 @@
                                                         <label for="EnvVar"
                                                                class="col-md-2 fw100 control-label">环境变量</label>
                                                         <div class="col-md-10">
-                                                            <textarea type="number"
+                                                            <textarea
                                                                       name="Envs" placeholder="变量名=变量值
 evn=prod"
                                                                       class="form-control" id="EnvVar"></textarea>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-10 top10">
+                                                    <div class="form-group">
+                                                        <label for="EnvVar"
+                                                               class="col-md-2 fw100 control-label">日志路径</label>
+                                                        <div class="col-md-10">
+                                                            <textarea rows="14"
+                                                                      name="LogPath" placeholder="/usr/local/tomcat/logs/
+/var/log/yum.log
+/var/log/messages
+/tmp/gc.log
+多个日志按换行填入,目录以/结尾,路径可以使用$item变量,$item为服务名称
+配置时需要先配置kfak地址信息,filebeat将日志输出到kafka中"
+                                                                      class="form-control" ></textarea>
+                                                            <br>
+                                                            <a target="_blank" href="/log/driver/list" class="m-t-10">日志驱动配置</a>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -652,7 +701,11 @@ evn=prod"
      * 2018-01-27 18:18
      * @param cluster
      */
-    function setAppRegistryServer(cluster) {
+    function setAppRegistryServer(cluster, imgServer, imgTag) {
+        if (imgTag){
+            $("#image-select-title").html("已选择镜像" + imgServer + " 该镜像可选版本有" + imgTag.split("\n").length + "   个");
+            return;
+        }
         var url = "/api/registry";
         var result = get({ClusterName: cluster}, url);
         var data = result["data"];
@@ -668,6 +721,16 @@ evn=prod"
         loadImageData("", cluster);
     }
 
+    /**
+     * 设置容器端口是否显示
+     */
+    function set_container_port() {
+        if ($("#NetworkMode").is(":checked")) {
+            $("#container-port-id").hide();
+        }else{
+            $("#container-port-id").show();
+        }
+    }
 
 </script>
 </body>

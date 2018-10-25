@@ -7,6 +7,8 @@ var (
 	ApiLimitCache, _ = util.RedisCacheClient("cloud_api_limit_")
 	// 缓存监控自动扩容时的服务数据
 	ServiceDataCache, _ = util.RedisCacheClient("cloud_cache_service_data_")
+	// 服务信息缓存
+	ServiceInfoCache, _ = util.RedisCacheClient("cloud_cache_service_info_")
 	// 2018-02-18 21:06
 	// 设置权限缓存,所有权限查询都从缓存中读取
 	PermCache, _ = util.RedisCacheClient("cloud_ci_perm_")
@@ -14,6 +16,8 @@ var (
 	AppCache, AppCacheErr = util.RedisCacheClient("cloud_k8s_app_")
 	// 集群数据缓存
 	ClusterCache, ClusterCacheErr = util.RedisCacheClient("cloud_cluster_cache_")
+	// 集群组件监控状态数据
+	ClusterComponentStatusesCache, _ = util.RedisCacheClient("cloud_component_statuses_cache_")
 	// 自动扩容缓存
     AutoScaleCache, AutoScaleCacheErr = util.RedisCacheClient("cloud_auto_scale_")
 	// 仓库认证缓存数据

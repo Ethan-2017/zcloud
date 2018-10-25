@@ -18,6 +18,8 @@ type CloudPermRole struct {
     Permissions string
     //创建用户
     CreateUser string
+    // 是否删除
+    IsDel int64
 }
 
 //2018-02-06 08:22:40.5954731 +0800 CST
@@ -62,4 +64,69 @@ type CloudApiResource struct {
     ApiType string
     //最近修改时间
     LastModifyTime string
+    // 请求方法
+    Method string
+    // 父节点
+	Parent string
+}
+
+
+//2018-08-23 08:38:08.9273685 +0800 CST
+type CloudUserPerm struct {
+    //
+    ResourceType string
+    //
+    LastModifyTime string
+    //
+    LastModifyUser string
+    //
+    Ent string
+    //
+    Description string
+    //
+    ParentUser string
+    //
+    Name string
+    //
+    UserName string
+    //
+    ResourceName string
+    //
+    SubUser string
+    //
+    CreateUser string
+    //
+    CreateTime string
+    //
+    ClusterName string
+    //
+    PermId int64
+    //
+    GroupName string
+}
+
+//2018-09-11 08:14:56.2238194 +0800 CST
+type CloudPermRolePerm struct {
+    //
+    CreateUser string
+    //
+    CreateTime string
+    //
+    RoleId int64
+    //
+    PermName string
+}
+
+//2018-09-11 10:20:19.8537039 +0800 CST
+type CloudPermRoleUser struct {
+    //
+    RoleId int64
+    //
+    UserName string
+    //
+    GroupName string
+    //
+    CreateUser string
+    //
+    CreateTime string
 }

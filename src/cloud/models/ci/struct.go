@@ -26,6 +26,10 @@ type CloudCodeRepostitory struct {
     CodeUrl string
     // 描述信息
     Description string
+    //
+    Tag string
+    //
+    Branch string
 }
 
 //2018-01-24 21:30:36.1428558 +0800 CST
@@ -38,6 +42,8 @@ type CloudCiDockerfile struct {
     FileId int64
     //dockerfile内容
     Content string
+    // 编译脚本
+    Script string
     //创建时间
     CreateTime string
     //创建用户
@@ -87,12 +93,16 @@ type CloudBuildJob struct {
     Description string
     // 自定义dockerfile
     Content string
+    // 编译脚本
+    Script string
     // 超时时间
     TimeOut int
     // 最近tag
     LastTag string
     // 基础镜像
     BaseImage string
+    // 环境变量
+    Env string
 }
 
 //2018-01-26 15:22:01.3732277 +0800 CST
@@ -123,10 +133,14 @@ type CloudBuildJobHistory struct {
     JobId int64
     //
     DockerFile string
+    // 编译脚本
+    Script string
     // 仓库组
     RegistryGroup string
     // 基础镜像
     BaseImage string
+    // 环境变量
+    Env string
 }
 
 //2018-02-10 18:22:04.0393696 +0800 CST
@@ -283,4 +297,40 @@ type CloudCiPerm struct {
     GroupsName string
     //创建用户
     CreateUser string
+}
+
+//2018-08-20 08:59:20.3564562 +0800 CST
+type CloudCiBatchJob struct {
+    //build时k8s.job名称
+    BuildId string
+    //
+    Description string
+    //创建用户
+    CreateUser string
+    //最近修改时间
+    LastModifyTime string
+    //最近修改用户
+    LastModifyUser string
+    //构建状态
+    BuildStatus string
+    //
+    Percent int64
+    //
+    BatchId int64
+    //
+    JobIds string
+    //创建时间
+    CreateTime string
+    //
+    Messages string
+    //batch name
+    BatchName string
+    // 版本号
+    Version string
+    // 集群
+    Cluster string
+    // 环境
+    Ent string
+    // 构建类型
+    BuildType string
 }

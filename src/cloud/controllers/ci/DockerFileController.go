@@ -7,6 +7,8 @@ import (
 	"cloud/util"
 	"strings"
 	"cloud/controllers/base/quota"
+	"cloud/userperm"
+	"github.com/astaxie/beego/logs"
 )
 
 // 2018-01-24 21:32
@@ -30,6 +32,7 @@ func (this *DockerFileController) DockerFileDetail() {
 	q := sql.SearchSql(data, ci.SelectCloudCiDockerfile, searchMap)
 	sql.Raw(q).QueryRow(&data)
 	this.Data["data"] = data
+	logs.Info(util.ObjToString(data))
 	this.Data["content"] = len(strings.Split(data.Content,"\n"))
 	this.TplName = "ci/dockerfile/detail.html"
 }
@@ -51,6 +54,7 @@ func GetDockerFileSelect() string {
 // @router /ci/dockerfile/add [get]
 func (this *DockerFileController) DockerFileAdd() {
 	id := this.GetString("FileId")
+	copy := this.GetString("Copy")
 	update := ci.CloudCiDockerfile{}
 
 	// 更新操作
@@ -61,6 +65,9 @@ func (this *DockerFileController) DockerFileAdd() {
 			ci.SelectCloudCiDockerfile,
 			searchMap)
 		sql.Raw(q).QueryRow(&update)
+	}
+	if copy == "1" {
+		 update.FileId = 0
 	}
 
 	this.Data["data"] = update
@@ -112,6 +119,7 @@ func (this *DockerFileController) DockerFileSave() {
 			ci.UpdateCloudCiDockerfile,
 			searchMap,
 			ci.UpdateDockerfileExclude)
+		DeleteJobCache(d.Name)
 	}else{
 		status, msg := checkDockerfileQuota(getDockerfileUser(this))
 		if !status {
@@ -148,7 +156,7 @@ func checkDockerfileQuota(username string) (bool,string) {
 // router /api/ci/dockerfile/name [get]
 func (this *DockerFileController) DockerFileDataName()  {
 	// dockerfile数据
-	data := []ci.CloudCiDockerfile{}
+	data := make([]ci.CloudCiDockerfile, 0)
 	q := sql.SearchSql(
 		ci.CloudCiDockerfile{},
 		ci.SelectCloudCiDockerfile,
@@ -160,7 +168,7 @@ func (this *DockerFileController) DockerFileDataName()  {
 // dockerfile数据
 // @router /api/ci/dockerfile  [get]
 func (this *DockerFileController) DockerFileDatas() {
-	data := []ci.CloudCiDockerfile{}
+	data := make([]ci.CloudCiDockerfile, 0)
 	searchMap := sql.SearchMap{}
 	id := this.Ctx.Input.Param(":id")
 	key := this.GetString("search")
@@ -169,7 +177,6 @@ func (this *DockerFileController) DockerFileDatas() {
 	}
 	user := getDockerfileUser(this)
 
-	searchMap.Put("CreateUser", user)
 	searchSql := sql.SearchSql(
 		ci.CloudCiDockerfile{},
 		ci.SelectCloudCiDockerfile,
@@ -186,10 +193,23 @@ func (this *DockerFileController) DockerFileDatas() {
 		&data,
 		ci.CloudCiDockerfile{})
 
+	perm := userperm.GetResourceName("DockerFile", user)
+	result := make([]ci.CloudCiDockerfile, 0)
+	for _, v := range data{
+		// 不是自己创建的才检查
+		if v.CreateUser != user {
+			if ! userperm.CheckPerm(v.Name, "", "", perm)  {
+				continue
+			}
+		}
+		result = append(result, v)
+	}
+
 	r := util.GetResponseResult(err,
 		this.GetString("draw"),
 		data,
 		sql.Count("cloud_ci_dockerfile", int(num), key))
+
 
 	setDockerfileJson(this, r)
 }

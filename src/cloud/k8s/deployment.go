@@ -49,6 +49,7 @@ func GetDeploymentsVersion(namespace string, name string, client kubernetes.Clie
 	return ""
 }
 
+
 // 2018-02-04 19:55
 // 更新镜像
 func UpdateDeploymentImage(param RollingParam) (bool, error) {
@@ -128,9 +129,9 @@ func GetDeploymentsService(namespace string, clientset kubernetes.Clientset, ser
 
 // 获取某个uuid标签的下面的pod服务
 // 在创建完pod后自动创建service使用
-func GetPodsFromUUid(namespace string, uuid string, clientset kubernetes.Clientset) []ServicePod {
-	pmap := []ServicePod{}
-	deployments := GetDeployments(namespace, clientset)
+func GetPodsFromUUid(namespace string, uuid string, clientSet kubernetes.Clientset) []ServicePod {
+	pmap := make([]ServicePod, 0)
+	deployments := GetDeployments(namespace, clientSet)
 	logs.Info("deployments", deployments)
 	name := strings.Split(namespace, "--")
 	resouceName := name[1]
@@ -159,11 +160,11 @@ func GetPodsFromUUid(namespace string, uuid string, clientset kubernetes.Clients
 }
 
 // 删除 deployment
-func DeletelDeployment(namespace string, isService bool, name string, clustername string) error {
-	cl, err := GetYamlClient(clustername, "apps", "v1beta1", "/apis")
+func DeletelDeployment(namespace string, isService bool, name string, clusterName string) error {
+	cl, err := GetYamlClient(clusterName, "apps", "v1beta1", "/apis")
 	resource := &metav1.APIResource{Name: "Deployments", Namespaced: true}
 	opt := metav1.DeleteOptions{}
-	client, err := GetClient(clustername)
+	client, err := GetClient(clusterName)
 	deploments := GetDeployments(namespace, client)
 	if len(deploments) < 0 {
 		logs.Error("删除yaml的deployment服务失败,没有找到对应的记录")
@@ -191,7 +192,7 @@ func DeletelDeployment(namespace string, isService bool, name string, clusternam
 	}
 
 	obj := metav1.ListOptions{}
-	rcl, _ := GetClient(clustername)
+	rcl, _ := GetClient(clusterName)
 	replications, err := rcl.ExtensionsV1beta1().ReplicaSets(namespace).List(obj)
 
 	// 删除 Replicationcontrollers
@@ -233,12 +234,12 @@ func DeletelDeployment(namespace string, isService bool, name string, clusternam
 	if isService {
 		logs.Info("开始删除Service Service ... ", namespace)
 		if name != "" {
-			err = DeleteService(clustername, namespace, name)
+			err = DeleteService(clusterName, namespace, name)
 		} else {
 			services, err := GetServices(rcl, namespace)
 			if err == nil {
 				for _, v := range services {
-					err = DeleteService(clustername, namespace, v.Name)
+					err = DeleteService(clusterName, namespace, v.Name)
 					if err == nil {
 						logs.Info("删除服务成功", namespace, v.Name)
 					} else {
@@ -255,14 +256,14 @@ func DeletelDeployment(namespace string, isService bool, name string, clusternam
 // svc {"metadata":{"name":"auto-nginx-3","namespace":"auto-nginx-3--dfsad","selfLink":"/api/v1/namespaces/auto-nginx-3--dfsad/services/auto-nginx-3","uid":"2c62631d-f773-11e7-8d1c-0894ef37b2d2","resourceVersion":"4030027","creationTimestamp":"2018-01-12T08:32:49Z","labels":{"app":"auto-nginx-3"}},"spec":{"ports":[{"name":"auto-nginx-3-0","protocol":"TCP","port":49873,"targetPort":80,"nodePort":49873}],"selector":{"name":"auto-nginx-3"},"clusterIP":"172.16.1.62","type":"NodePort","sessionAffinity":"None","externalTrafficPolicy":"Cluster"},"status":{"loadBalancer":{}}}
 // deploy {"metadata":{"name":"auto-3","namespace":"auto-3--dfsad","selfLink":"/apis/apps/v1beta1/namespaces/auto-3--dfsad/deployments/auto-3","uid":"ee1a2658-f780-11e7-8d1c-0894ef37b2d2","resourceVersion":"4037873","generation":1,"creationTimestamp":"2018-01-12T10:11:18Z","labels":{"name":"auto-3"},"annotations":{"deployment.kubernetes.io/revision":"1"}},"spec":{"replicas":1,"selector":{"matchLabels":{"name":"auto-3"}},"template":{"metadata":{"creationTimestamp":null,"labels":{"name":"auto-3"}},"spec":{"containers":[{"name":"auto-3","image":"nginx:1.10","ports":[{"containerPort":80,"protocol":"TCP"}],"resources":{"limits":{"cpu":"1","memory":"2Gi"},"requests":{"cpu":"1","memory":"2Gi"}},"terminationMessagePath":"/dev/termination-log","terminationMessagePolicy":"File","imagePullPolicy":"IfNotPresent"}],"restartPolicy":"Always","terminationGracePeriodSeconds":30,"dnsPolicy":"ClusterFirst","securityContext":{},"schedulerName":"default-scheduler"}},"strategy":{"type":"RollingUpdate","rollingUpdate":{"maxUnavailable":"25%","maxSurge":"25%"}},"revisionHistoryLimit":2,"progressDeadlineSeconds":600},"status":{"observedGeneration":1,"replicas":1,"updatedReplicas":1,"readyReplicas":1,"availableReplicas":1,"conditions":[{"type":"Available","status":"True","lastUpdateTime":"2018-01-12T10:11:20Z","lastTransitionTime":"2018-01-12T10:11:20Z","reason":"MinimumReplicasAvailable","message":"Deployment has minimum availability."},{"type":"Progressing","status":"True","lastUpdateTime":"2018-01-12T10:11:20Z","lastTransitionTime":"2018-01-12T10:11:18Z","reason":"NewReplicaSetAvailable","message":"ReplicaSet \"auto-3-8548fd9d57\" has successfully progressed."}]}}
 // 获取自己创建的namespace应用, 规则是app名加资源名区分
-func GetDeploymentApp(clientset kubernetes.Clientset, namespace string, service string) map[string]CloudApp {
+func GetDeploymentApp(clientSet kubernetes.Clientset, namespace string, service string) map[string]CloudApp {
 	result := map[string]CloudApp{}
 
-	deployments := []v1beta12.Deployment{}
+	deployments := make([]v1beta12.Deployment, 0)
 	if service != "" {
-		deployments = GetDeploymentsService(namespace, clientset, service)
+		deployments = GetDeploymentsService(namespace, clientSet, service)
 	} else {
-		deployments = GetDeployments(namespace, clientset)
+		deployments = GetDeployments(namespace, clientSet)
 	}
 	//datas := []CloudApp{}
 	for _, v := range deployments {
@@ -279,14 +280,14 @@ func GetDeploymentApp(clientset kubernetes.Clientset, namespace string, service 
 
 		access := make([]string, 0)
 		if service != "" {
-			svc := GetAppService(clientset, v.Namespace, service)
+			svc := GetAppService(clientSet, v.Namespace, service)
 			for _, svcport := range svc.Spec.Ports {
 				a := svc.Name + "." + v.Namespace + ":" + strconv.Itoa(int(svcport.NodePort))
 				access = append(access, a)
 			}
 			data.ServiceNumber = 1
 		} else {
-			svcs, _ := GetServices(clientset, v.Namespace)
+			svcs, _ := GetServices(clientSet, v.Namespace)
 			if len(svcs) > 0 {
 				for _, svc := range svcs[0].Spec.Ports {
 					a := svcs[0].Name + "." + v.Namespace + ":" + strconv.Itoa(int(svc.NodePort))
@@ -298,7 +299,7 @@ func GetDeploymentApp(clientset kubernetes.Clientset, namespace string, service 
 		data.Access = access
 
 		//data.LastUpdateTime = v.Status.
-		pods := GetPods(v.Namespace, clientset)
+		pods := GetPods(v.Namespace, clientSet)
 		if service == "" {
 			data.ContainerNumber = len(pods)
 		}
@@ -321,6 +322,7 @@ func GetDeploymentApp(clientset kubernetes.Clientset, namespace string, service 
 		data.ClusterName = name[1]
 		result[v.Namespace+service] = data
 	}
+
 	return result
 }
 
@@ -330,7 +332,7 @@ func GetDeploymentApp(clientset kubernetes.Clientset, namespace string, service 
 func getPorts(port string, hostport string) []map[string]interface{} {
 	ports := make([]map[string]interface{}, 0)
 	hostsports := strings.Split(hostport, ",")
-	for id, p := range strings.Split(port, ",") {
+	for idx, p := range strings.Split(port, ",") {
 		pv, err := strconv.Atoi(p)
 		if err != nil {
 			continue
@@ -339,8 +341,8 @@ func getPorts(port string, hostport string) []map[string]interface{} {
 			"containerPort": pv,
 			"protocol":      "TCP",
 		}
-		if len(hostsports) > id {
-			hostport, err := strconv.Atoi(hostsports[id])
+		if len(hostsports) > idx {
+			hostport, err := strconv.Atoi(hostsports[idx])
 			if err == nil {
 				data["hostPort"] = hostport
 			}
@@ -391,13 +393,36 @@ func getServicePorts(param ServiceParam) []map[string]interface{} {
 		}
 		ports = append(ports, temp)
 	}
+	if param.IsRedeploy {
+		data := make([]map[string]interface{}, 0)
+		json.Unmarshal([]byte(param.PortYaml), &data)
+		logs.Info("yaml 数据", data)
+		if len(data) > 0 {
+			for _, v := range data{
+				d := v
+				if d != nil {
+					if d["kind"] == "Service" {
+						spec := d["spec"].(map[string]interface{})
+						if spec != nil {
+							portData := spec["ports"].([]interface{})
+							jsonData, err  := json.Marshal(portData)
+							if err == nil {
+								json.Unmarshal(jsonData, &ports)
+							}
+							logs.Info("重建服务获取到端口", util.ObjToString(ports))
+						}
+					}
+				}
+			}
+		}
+	}
 	return ports
 }
 
 // 制作亲和性数据
 // 2018-01-11 14:55
 func getAffinity(affinityData string) []map[string]interface{} {
-	data := []Affinity{}
+	data := make([]Affinity, 0)
 	err := json.Unmarshal([]byte(affinityData), &data)
 	if err != nil {
 		logs.Error("创建Affinity数据失败", err)
@@ -577,6 +602,10 @@ func createService(ports []map[string]interface{}, param ServiceParam) (interfac
 		}
 	}
 
+	if param.SessionAffinity  != "" {
+		conf["spec"].(map[string]interface{})["sessionAffinity"] = param.SessionAffinity
+	}
+
 	resource := &metav1.APIResource{Name: "Services", Namespaced: true}
 	obj := unstructured.Unstructured{Object: conf}
 
@@ -662,6 +691,11 @@ func CreateServicePod(param ServiceParam) (string, error) {
 		CreateConfigmap(param)
 	}
 
+	if param.TerminationSeconds == 0 {
+		logs.Info("使用默认 TerminationSeconds 50秒")
+		param.TerminationSeconds = 50
+	}
+
 	yamldata := make([]interface{}, 0)
 	volumes, volumeMounts := getVolumes(param.StorageData, param.ConfigureData, param)
 	name := param.ServiceName
@@ -679,7 +713,7 @@ func CreateServicePod(param ServiceParam) (string, error) {
 			"minReadySeconds": param.MinReady, // 滚动升级多少秒认为该pod就绪
 			"strategy": map[string]interface{}{
 				"rollingUpdate": map[string]interface{}{ // 假如replicas =3 ， 滚动升级pod数量到2-4个之间
-					"maxSurge":       1, // 滚动升级时会先启动1个pod
+					"maxSurge":       2, // 滚动升级时会先启动1个pod
 					"maxUnavailable": 1, // 滚动升级时允许的最大Unavailable的pod个数
 					//例如，该值设置成30%，启动rolling update后旧的ReplicatSet将会立即缩容到期望的Pod数量的70%。
 					// 新的Pod ready后，随着新的ReplicaSet的扩容，旧的ReplicaSet会进一步缩容，确保在升级的所有时刻可以用的Pod数量至少是期望Pod数量的70%。
@@ -698,7 +732,7 @@ func CreateServicePod(param ServiceParam) (string, error) {
 				},
 				"spec": map[string]interface{}{
 					"nodeSelector": getNodeSelectorNode(param.Selector),
-					//"terminationGracePeriodSeconds": 60, // 优雅的关闭进程,默认30秒
+					"terminationGracePeriodSeconds": param.TerminationSeconds, // 优雅的关闭进程,默认30秒
 					"containers": []map[string]interface{}{
 						map[string]interface{}{
 							"image": param.Image,
@@ -716,7 +750,6 @@ func CreateServicePod(param ServiceParam) (string, error) {
 							},
 							"env":          getEnv(param.Envs),
 							"volumeMounts": volumeMounts,
-
 						},
 					},
 					"volumes": volumes,
@@ -725,11 +758,39 @@ func CreateServicePod(param ServiceParam) (string, error) {
 		},
 	}
 
+	// 主机网络模式
+	if len(param.NetworkMode) > 0 {
+		v["spec"].(map[string]interface{})["template"].(map[string]interface{})["spec"].(map[string]interface{})["hostNetwork"] = true
+	}
+
+	// 绑定filebeat容器
+	if len(param.Kafka) > 0 && len(param.LogPath) > 0 {
+		spec := v["spec"].(map[string]interface{})["template"].(map[string]interface{})["spec"].(map[string]interface{})
+		spec["containers"] = append(spec["containers"].([]map[string]interface{}), map[string]interface{}{})
+		filebeatContainer := CreateFilebeatConfig(param)
+	    spec["containers"].([]map[string]interface{})[1] = filebeatContainer
+		filebeatVolumes, filebeatMount := getFilebeatStorage(param)
+		logs.Info("filebeatMount", filebeatMount)
+		if len(filebeatVolumes) > 0 {
+			oldvolumes :=  spec["volumes"].([]map[string]interface{})
+			oldvolumes = append(oldvolumes, filebeatVolumes...)
+			oldvolumes = append(oldvolumes, getFilebeatConfig(param))
+			spec["volumes"] = oldvolumes
+			filebeatOldVolumeMounts := spec["containers"].([]map[string]interface{})[1]["volumeMounts"].([]map[string]interface{})
+			filebeatOldVolumeMounts = append(filebeatOldVolumeMounts, filebeatMount...)
+			spec["containers"].([]map[string]interface{})[1]["volumeMounts"] = filebeatOldVolumeMounts
+
+			serviceOldVolumeMounts := spec["containers"].([]map[string]interface{})[0]["volumeMounts"].([]map[string]interface{})
+			serviceOldVolumeMounts = append(serviceOldVolumeMounts, filebeatMount...)
+			spec["containers"].([]map[string]interface{})[0]["volumeMounts"] = serviceOldVolumeMounts
+		}
+	}
+
 	healthdata, ok := getHealthData(param.HealthData)
 	if ok {
 		// readinessProbe
-		v["spec"].(map[string]interface{})["template"].(map[string]interface{})["spec"].(map[string]interface{})["containers"].([]map[string]interface{})[0]["livenessProbe"] = make(map[string]interface{})
-		v["spec"].(map[string]interface{})["template"].(map[string]interface{})["spec"].(map[string]interface{})["containers"].([]map[string]interface{})[0]["livenessProbe"] = healthdata
+		v["spec"].(map[string]interface{})["template"].(map[string]interface{})["spec"].(map[string]interface{})["containers"].([]map[string]interface{})[0]["readinessProbe"] = make(map[string]interface{})
+		v["spec"].(map[string]interface{})["template"].(map[string]interface{})["spec"].(map[string]interface{})["containers"].([]map[string]interface{})[0]["readinessProbe"] = healthdata
 	}
 	v = setImagePullPolice(param, v)
 	if param.Command != "" {
@@ -739,6 +800,8 @@ func CreateServicePod(param ServiceParam) (string, error) {
 	if param.Privileged {
 		v = setPrivileged(param, v)
 	}
+
+	logs.Info(util.ObjToString(v))
 
 	yamldata = append(yamldata, v)
 	t, _ := json.Marshal(v)

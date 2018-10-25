@@ -11,18 +11,21 @@ import (
 	"cloud/sql"
 	"encoding/json"
 	"cloud/cache"
+	"github.com/astaxie/beego/logs"
+	"github.com/garyburd/redigo/redis"
 )
 
 // 2018-02-19 09:37
 // 获取集群数据
 func GetClusterDetailData(name string) cluster.CloudClusterDetail {
 	detail := cluster.CloudClusterDetail{}
-	r := cache.ClusterCache.Get("detail"+name)
-	status := util.RedisObj2Obj(r, &detail)
+	status := util.RedisObj2Obj(cache.ClusterCache.Get("detail"+name), &detail)
 	if ! status {
 		go CacheClusterDetailData(name)
 	}
-	detail.Health = k8s.GetClusterStatus(name)
+	r := cache.ClusterComponentStatusesCache.Get(name)
+	health, _ := redis.String(r, nil)
+	detail.Health = health
 	return detail
 }
 
@@ -52,6 +55,7 @@ func CacheClusterDetailData(name string) {
 		detail.ClusterMem = clusterStatus.MemSize
 		detail.ClusterNode = clusterStatus.Nodes
 		detail.ClusterPods = clusterStatus.PodNum
+		detail.OsVersion = clusterStatus.OsVersion
 		if detail.ClusterCpu > 0 && detail.ClusterMem > 0 {
 			used := k8s.GetClusterUsed(c)
 			detail.UsedMem = used.UsedMem
@@ -123,7 +127,7 @@ func GetClusterMap() util.Lock {
 
 // 获取所有集群名称信息
 func GetClusterName() []cluster.CloudClusterName {
-	data := []cluster.CloudClusterName{}
+	data := make([]cluster.CloudClusterName, 0)
 
 	searchSql := sql.SearchSql(
 		cluster.CloudClusterName{},
@@ -191,33 +195,48 @@ func getUsername(this *ClusterController) string {
 	return util.GetUser(this.GetSession("username"))
 }
 
-
+// 2018-02-20 08:46
+// 缓存集群信息到redis中,不用每次查库
+// 任务计划自动更新数据
+// 每一分钟一次
+func CacheClusterHealthData() {
+	logs.Info("生成组件健康数据")
+	data := make([]cluster.CloudClusterDetail, 0)
+	sql.Raw(cluster.SelectCloudCluster).QueryRows(&data)
+	for _, k := range data {
+		go k8s.GetClusterStatus(k.ClusterName)
+	}
+}
 
 // 2018-02-19 08:46
 // 缓存集群信息到redis中,不用每次查库
 // 任务计划自动更新数据
 func CacheClusterData() {
-	cData := []k8s.ClusterStatus{}
-	data := []cluster.CloudClusterDetail{}
+	cData := make([]k8s.ClusterStatus, 0)
+	data := make([]cluster.CloudClusterDetail, 0)
 	sql.Raw(cluster.SelectCloudCluster).QueryRows(&data)
 	for _, k := range data {
 		go CacheClusterDetailData(k.ClusterName)
 		go GetClusterInfo(k, &cData)
+
 	}
 	counter := 0
 	for {
 		if len(cData) >= len(data) {
 			break
 		}
-		time.Sleep(time.Second * 1)
+		time.Sleep(time.Second * 3)
 		if counter > 3 {
 			break
 		}
 		counter += 3
 	}
 	if cache.ClusterCacheErr == nil {
+		for _, v := range cData {
+			cache.ClusterCache.Put("data" + v.ClusterName, util.ObjToString(v), time.Hour*80)
+		}
 		// 80 小时
-		cache.ClusterCache.Put("data", util.ObjToString(cData), time.Hour*80)
+		//cache.ClusterCache.Put("data", util.ObjToString(cData), time.Hour*80)
 	}
 
 }
@@ -225,7 +244,7 @@ func CacheClusterData() {
 // 2018-02-19 08:53
 // 获取缓存的集群数据数据
 func getClusterCacheData() []k8s.ClusterStatus {
-	cData := []k8s.ClusterStatus{}
+	cData := make([]k8s.ClusterStatus, 0)
 	r := cache.ClusterCache.Get("data")
 	status := util.RedisObj2Obj(r, &cData)
 	if ! status {

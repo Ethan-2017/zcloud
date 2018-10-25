@@ -67,6 +67,8 @@ type ServiceParam struct {
 	Name string
 	// deploy名称
 	ServiceName string
+	// 网络模式
+	NetworkMode string
 	// cpu
 	Cpu interface{}
 	// 内存
@@ -137,6 +139,24 @@ type ServiceParam struct {
 	Labels map[string]interface{}
 	// 访问状态
 	AccessMode string
+	// 老的yaml信息,主要是获取端口
+	PortYaml string
+	// 重建标志
+	IsRedeploy bool
+	// pod关闭时间
+	TerminationSeconds int
+    // session 亲和性
+	SessionAffinity  string
+	// kafka 地址
+	Kafka string
+	// 日志路径,文件或目录,目录以/结尾
+	LogPath string
+	// 环境名称
+	Ent string
+	// es地址
+	ElasticSearch string
+	// 日志挂载路径
+	LogDir string
 }
 
 // 配置服务健康检查使用的
@@ -173,6 +193,8 @@ const SelectCloudConfigureMount = "select service_name,mount_path,data_name,crea
 const UpdateCloudConfigureMount = "update cloud_configure_mount"
 const DeleteCloudConfigureMount = "delete from cloud_configure_mount"
 const InsertCloudConfigureMount = "insert into cloud_configure_mount"
+const SelectCloudLb = "select service_number,entname,cpu,memory,host_log_path,lb_ip,lb_type,lb_id,description,create_time,cluster_name,resource_name,last_modify_time,lb_name,lb_domain_prefix,lb_domain_suffix,create_user,last_modify_user,status from cloud_lb"
+
 
 
 
@@ -206,6 +228,8 @@ type RegistryParam struct {
 	Master      string
 	Port        string
 	AuthServer  string
+	HostPath    string
+	Replicas    int64
 }
 
 // 镜像信息获取
@@ -408,6 +432,47 @@ type CloudLbNginxConf struct {
 	CertFile string
 }
 
+type CloudLb struct {
+	//负载均衡名称
+	LbName string
+	//域名前缀
+	LbDomainPrefix string
+	//域名后缀
+	LbDomainSuffix string
+	//集群名称
+	ClusterName string
+	//资源空间
+	ResourceName string
+	//最近修改时间
+	LastModifyTime string
+	//创建用户
+	CreateUser string
+	//最近修改用户
+	LastModifyUser string
+	//
+	Status string
+	//IP地址
+	LbIp string
+	//负载均衡类型,nginx,haproxy
+	LbType string
+	//
+	LbId int64
+	//配额描述信息
+	Description string
+	//创建时间
+	CreateTime string
+	//
+	ServiceNumber int64
+	// 环境名称
+	Entname string
+	// cpu
+	Cpu string
+	// Memory
+	Memory string
+	// 日志挂载路径
+	HostLogPath string
+}
+
 //2018-02-02 10:01:17.2337629 +0800 CST
 type CloudLbCert struct {
 	//描述信息
@@ -583,6 +648,8 @@ type EventData struct {
 	Reason string
 	// 主机Ip
 	Host string
+	// 类型
+	Type string
 }
 
 
@@ -592,6 +659,7 @@ type NodeStatus struct {
 	K8sVersion string
 	ErrorMsg   string
 	MemSize    int64
+	OsVersion string
 }
 
 type ClusterStatus struct {
@@ -602,6 +670,7 @@ type ClusterStatus struct {
 	ClusterName  string
 	Nodes        int64
 	Services     int
+	OsVersion string
 }
 
 type ClusterResources struct {
@@ -666,6 +735,8 @@ type CloudApp struct {
 	AvailableReplicas int32
 	// 环境名称
 	Entname string
+	// 检查时间
+	CheckTime int64
 }
 
 // 2018-03-01 14:24
@@ -677,4 +748,17 @@ type CertData struct {
 	CertData string
 	// node证书私钥内容
 	KeyData string
+}
+
+// 2018-09-04 09:51
+// 集群节点资源使用情况
+type NodeReport struct {
+	//
+	Ip string
+	Namespace string
+	Name string
+	CpuRequests string
+	MemoryRequests string
+	CpuLimits string
+	MemoryLimits string
 }

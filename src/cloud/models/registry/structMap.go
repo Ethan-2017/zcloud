@@ -1,6 +1,6 @@
 package registry
 
-const SelectCloudRegistryServer = "select entname,access,auth_server, name,admin,groups_id,last_modify_time,groups,server_address,cluster_name,create_time,create_user,images_number,username,server_id,last_modify_user,prefix,password,server_domain,description from cloud_registry_server"
+const SelectCloudRegistryServer = "select entname,access,replicas,host_path,auth_server, name,admin,groups_id,last_modify_time,groups,server_address,cluster_name,create_time,create_user,images_number,username,server_id,last_modify_user,prefix,password,server_domain,description from cloud_registry_server"
 const UpdateCloudRegistryServer = "update cloud_registry_server"
 const UpdateRegistryServerExclude = "AuthServer,Name,CreateTime,CreateUser"
 const InsertCloudRegistryServer = "insert into cloud_registry_server" 
@@ -15,6 +15,7 @@ const InsertCloudRegistryPermissions = "insert into cloud_registry_permissions"
 const DeleteCloudRegistryPermissions = "delete from cloud_registry_permissions"
 const UpdateCloudRedisPermExclude  = "AuthServer,Name,CreateTime,CreateUser"
 const SelectCloudRegistryPermWhere  = ` and (service_name like "?" or user_name like "?" or project like "?")`
+const UpdateClusterName  = `update cloud_registry_permissions a , cloud_registry_server b set a.cluster_name=b.cluster_name where substring_index(service_name,":",1)=b.server_domain`
 
 const SelectCloudRegistryGroup = "select tag_number,cluster_name,server_domain,group_name,last_modify_time,image_number,create_time,create_user,group_type,last_modify_user,size_totle,group_id from cloud_registry_group"
 const SelectCloudRegistryGroupWhere  = `and (group_name like "%?%"  or create_user like "?")`
@@ -23,7 +24,7 @@ const UpdateGroupExclude = "GroupName,CreateTime"
 const UpdateCloudRegistryGroupExclude  =  "GroupName,CreateUser,CreateTime,LastModifyUser,ServerDomain,ClusterName"
 const InsertCloudRegistryGroup = "insert into cloud_registry_group" 
 const DeleteCloudRegistryGroup = "delete from cloud_registry_group"
-const SelectRegistryServerGroup  = `select b.server_address as server_address,b.server_domain as server_domain from cloud_registry_group a , cloud_registry_server b where a.server_domain=b.server_domain and a.cluster_name=b.cluster_name and a.group_name="{0}" and a.cluster_name="{1}"`
+const SelectRegistryServerGroup  = `select b.server_address as server_address,b.server_domain as server_domain, b.auth_server as auth_server from cloud_registry_group a , cloud_registry_server b where a.server_domain=b.server_domain and a.cluster_name=b.cluster_name and a.group_name="{0}" and a.cluster_name="{1}"`
 const SelectUserRegistryGroups = "select group_id from cloud_registry_group where create_user in (?)"
 
 const SelectCloudImage = "select access,download,tags,tag_number,layers_number,create_user,name,repositories,image_type,image_id,create_time,size,repositories_group from cloud_image"

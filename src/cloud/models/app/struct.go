@@ -11,6 +11,8 @@ type CloudAppName struct {
 	ClusterName string
 	// 环境名称
 	Entname string
+	//
+	AppId string
 }
 
 type CloudApp struct {
@@ -72,6 +74,11 @@ type CloudAppServiceName struct {
 	Entname string
 	// 集群名称
 	ClusterName string
+	// 资源名称
+	ResourceName string
+	// 创建用户
+	CreateUser string
+
 }
 
 type CloudAppTemplate struct {
@@ -93,6 +100,16 @@ type CloudAppTemplate struct {
 	Yaml string
 	//
 	TemplateId int64
+	// 集群
+	Cluster string
+	// 环境
+	Ent string
+	// 服务名称
+	ServiceName string
+	// 应用名称
+	AppName string
+	// 域名
+	Domain string
 }
 
 
@@ -241,6 +258,12 @@ type CloudAppService struct {
 	// 如果2存在就部署一个1,
 	// 当确认发布完成 ,删除一个未使用的部署
 	ServiceVersion string
+	// 域名
+	Domain string
+	// pod关闭时间
+	TerminationSeconds int
+	// 日志路径
+	LogPath string
 }
 
 // 存储容器名称数据,在更新数据时做判断使用,不用频繁查库
@@ -249,6 +272,10 @@ type CloudContainerName struct {
 	ContainerName string
 	//应用名称
 	AppName string
+	//服务名称
+	ServiceName string
+	//集群名称
+	ClusterName string
 }
 
 
@@ -300,4 +327,33 @@ type CloudContainer struct {
 	Entname string
 	// 事件信息
 	Events string
+	// 重启次数
+	Restart int32
+	// 服务信息
+	Service string
+	// 数据更新时间
+	LastUpdateTime int64
+}
+//2018-08-16 16:04:25.8692888 +0800 CST
+type CloudTemplateDeployHistory struct {
+    //创建用户
+    CreateUser string
+    //环境名称
+    Entname string
+    //创建时间
+    CreateTime string
+    //service名称
+    ServiceName string
+    //应用名称
+    AppName string
+    //环境名称
+    ResourceName string
+    //集群名称
+    ClusterName string
+    //
+    TemplateName string
+    //
+    HistoryId int64
+    // 域名
+    Domain string
 }

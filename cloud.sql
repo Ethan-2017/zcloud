@@ -156,6 +156,7 @@ CREATE TABLE `cloud_app_service` (
   `container_port` varchar(100) DEFAULT NULL COMMENT '容器端口,多个逗号分隔',
   `lb_name` varchar(400) DEFAULT NULL COMMENT '负载均衡名称',
   `lb_data` text COMMENT '负载均衡数据',
+  `log_path` text COMMENT '日志路径',
   `image_tag` varchar(300) DEFAULT NULL,
   `deploy_type` varchar(50) DEFAULT NULL COMMENT '部署模式, deployment daemonset statefulset',
   `replicas` int(11) DEFAULT NULL COMMENT '容器副本数量',
@@ -184,6 +185,65 @@ CREATE TABLE `cloud_app_service` (
 --
 -- Dumping data for table `cloud_app_service`
 --
+CREATE TABLE `log_show_appname` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `appname` varchar(232) DEFAULT NULL,
+  `create_time` varchar(32) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uidx_appname` (`appname`)
+) ENGINE=InnoDB AUTO_INCREMENT=0 DEFAULT CHARSET=utf8;
+
+CREATE TABLE `log_show_ip` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `ip` varchar(32) DEFAULT NULL,
+  `create_time` varchar(32) DEFAULT NULL,
+  `app_name` varchar(200) DEFAULT NULL,
+  `env` varchar(32) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uidx_ip_appname` (`ip`,`app_name`)
+) ENGINE=InnoDB AUTO_INCREMENT=0 DEFAULT CHARSET=utf8;
+
+CREATE TABLE `log_show_filter` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `appname` varchar(232) DEFAULT NULL,
+  `env` varchar(32) DEFAULT NULL,
+  `hostname` varchar(232) DEFAULT NULL,
+  `ip` varchar(32) DEFAULT NULL,
+  `create_time` varchar(32) DEFAULT NULL,
+  `create_user` varchar(32) DEFAULT NULL,
+  `query` varchar(240) DEFAULT NULL,
+  `click` int(11) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uidx_log_show_filter` (`appname`,`env`,`hostname`,`ip`,`create_user`,`query`)
+) ENGINE=InnoDB AUTO_INCREMENT=0 DEFAULT CHARSET=utf8 ;
+
+
+create table `log_data_source` (
+    `data_source_id` int primary key  AUTO_INCREMENT COMMENT '主键',
+    `create_user` varchar(32) DEFAULT NULL,
+    `name`  varchar(132) DEFAULT NULL comment "数据源名称",
+    `address`  varchar(232) DEFAULT NULL comment "数据源地址",
+    `description` varchar(300)  comment " 描述信息",
+    `create_time` varchar(32) DEFAULT NULL,
+    `cluster_name` varchar(232) DEFAULT NULL,
+    `driver_type` varchar(232) DEFAULT NULL  comment "数据驱动类型,有es,kafka",
+    `data_type` varchar(232) DEFAULT NULL  comment "日志读取或者写入",
+    `ent` varchar(132) DEFAULT NULL,
+    `last_modify_user` varchar(32) DEFAULT NULL,
+    `last_modify_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最近修改时间'
+)ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8;
+
+ CREATE TABLE `log_show_history` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `appname` varchar(232) DEFAULT NULL,
+  `env` varchar(32) DEFAULT NULL,
+  `hostname` varchar(232) DEFAULT NULL,
+  `ip` varchar(32) DEFAULT NULL,
+  `create_time` varchar(32) DEFAULT NULL,
+  `create_user` varchar(32) DEFAULT NULL,
+  `query` text,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=0 DEFAULT CHARSET=utf8;
 
 LOCK TABLES `cloud_app_service` WRITE;
 /*!40000 ALTER TABLE `cloud_app_service` DISABLE KEYS */;
@@ -371,6 +431,7 @@ CREATE TABLE `cloud_build_job` (
   `build_status` varchar(32) DEFAULT NULL COMMENT '构建状态',
   `description` varchar(100) DEFAULT NULL,
   `content` text COMMENT 'dockerfile数据',
+  `script` text COMMENT '构建脚本',
   `time_out` int(11) DEFAULT NULL COMMENT '构建超时时间,最大3600秒,最小10秒',
   `last_tag` varchar(50) DEFAULT NULL COMMENT '最新tag',
   `base_image` varchar(200) DEFAULT NULL COMMENT '基础镜像,里面应该运行docker服务',
@@ -403,7 +464,8 @@ CREATE TABLE `cloud_build_job_history` (
   `create_user` varchar(32) DEFAULT NULL COMMENT '创建用户',
   `build_status` varchar(32) DEFAULT NULL COMMENT '构建状态',
   `build_time` int(11) DEFAULT NULL COMMENT '构建时间',
-  `build_logs` text COMMENT '构建日志',
+  `build_logs` mediumtext COMMENT '构建日志',
+    `script` text COMMENT '构建脚本',
   `registry_group` varchar(100) DEFAULT NULL COMMENT '仓库组',
   `base_image` varchar(200) DEFAULT NULL COMMENT '基础镜像,里面应该运行docker服务',
   PRIMARY KEY (`history_id`),
@@ -427,6 +489,7 @@ DROP TABLE IF EXISTS `cloud_ci_dockerfile`;
 CREATE TABLE `cloud_ci_dockerfile` (
   `file_id` int(11) NOT NULL AUTO_INCREMENT,
   `content` text COMMENT 'dockerfile内容',
+  `script` text COMMENT '构建脚本',
   `name` varchar(100) DEFAULT NULL COMMENT '文件名称',
   `create_time` varchar(32) DEFAULT NULL COMMENT '创建时间',
   `create_user` varchar(32) DEFAULT NULL COMMENT '创建用户',
@@ -759,6 +822,7 @@ CREATE TABLE `cloud_container` (
   `env` text,
   `process` text,
   `storage_data` text,
+  `restart` int(11),
   `waiting_messages` text COMMENT '容器等待时的信息',
   `waiting_reason` varchar(100) DEFAULT NULL COMMENT '容器等待原因',
   `terminated_reason` varchar(100) DEFAULT NULL COMMENT '容器停止原因',
@@ -986,6 +1050,10 @@ CREATE TABLE `cloud_lb` (
   UNIQUE KEY `uidx_cloud_lb_lb_name` (`lb_name`)
 ) ENGINE=InnoDB AUTO_INCREMENT=18 DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
+
+alter table cloud_lb add host_log_path varchar(100) comment "log mount path";
+alter table cloud_lb add cpu varchar(10) default 2 comment "cpu";
+alter table cloud_lb add memory varchar(10) default 4096 comment "memory";
 
 --
 -- Dumping data for table `cloud_lb`
@@ -1443,11 +1511,13 @@ CREATE TABLE `cloud_registry_server` (
   `entname` varchar(100) DEFAULT NULL COMMENT '环境名称',
   `mount_path` varchar(1000) DEFAULT NULL COMMENT '仓库挂载路径',
   `labels` varchar(30) DEFAULT NULL COMMENT '安装集群的标签',
+  `host_path` varchar(200) ) DEFAULT NULL COMMENT '主机挂载路径',
+  `status` varchar(10) DEFAULT NULL COMMENT '运行状态',
   `replicas` int(11) DEFAULT NULL COMMENT '副本数量',
   PRIMARY KEY (`server_id`),
   UNIQUE KEY `uidx_cloud_registry_server_clsuter_name` (`cluster_name`,`name`),
   UNIQUE KEY `uidx_cloud_registry_server_server_domain` (`server_domain`)
-) ENGINE=InnoDB AUTO_INCREMENT=29 DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -1455,8 +1525,6 @@ CREATE TABLE `cloud_registry_server` (
 --
 
 LOCK TABLES `cloud_registry_server` WRITE;
-/*!40000 ALTER TABLE `cloud_registry_server` DISABLE KEYS */;
-INSERT INTO `cloud_registry_server` VALUES (27,'reg2.asura.com:49000','reg2.asura.com','2018-03-02 11:34:11','admin','2018-01-31 09:36:25','zhaozq14','',0,'存储服务',0,'','','V1ZkU2RHRlhORDA9','glusterfs-cluster',NULL,'registry','https://registry.asura.com:5001/auth','admin','容器内&nbsp;<br>registry.registryv2--registryv2:49000<br>集群外&nbsp;<br><a target=\'_blank\' href=\'https://reg2.asura.com:49000/v2/\'>reg2.asura.com:49000</a>','生产环境',NULL,NULL,NULL);
 /*!40000 ALTER TABLE `cloud_registry_server` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -1485,7 +1553,7 @@ CREATE TABLE `cloud_storage` (
   `status` varchar(100) DEFAULT NULL COMMENT '使用状态',
   PRIMARY KEY (`storage_id`),
   UNIQUE KEY `uidx_cloud_storage_name` (`name`)
-) ENGINE=InnoDB AUTO_INCREMENT=28 DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -1521,7 +1589,7 @@ CREATE TABLE `cloud_storage_mount_info` (
   `resource_name` varchar(100) DEFAULT NULL,
   PRIMARY KEY (`mount_id`),
   KEY `idx_name_cluster` (`storage_name`,`cluster_name`,`service_name`)
-) ENGINE=InnoDB AUTO_INCREMENT=14 DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -1530,7 +1598,6 @@ CREATE TABLE `cloud_storage_mount_info` (
 
 LOCK TABLES `cloud_storage_mount_info` WRITE;
 /*!40000 ALTER TABLE `cloud_storage_mount_info` DISABLE KEYS */;
-INSERT INTO `cloud_storage_mount_info` VALUES (3,'storage-1',NULL,'2018-01-31 15:36:27','zhaozq14','glusterfs-cluster','/mnt',NULL,NULL,NULL,'1','crm-nfs','dfsad'),(5,'storage-1',NULL,'2018-02-04 16:57:44','zhaozq14','glusterfs-cluster','/mnt',NULL,NULL,'共享型','1','crm-nfs','dfsad'),(7,'glusterfs-app',NULL,'2018-02-22 21:31:37','admin','glusterfs-cluster','/mnt',NULL,NULL,NULL,'1','glusterfs-crm-1g','admin-quota'),(9,'glusterfs-app',NULL,'2018-02-22 21:35:16','admin','glusterfs-cluster','/mnt',NULL,NULL,'Glusterfs','1','glusterfs-crm-1g','admin-quota'),(11,'glusterfs-app',NULL,'2018-02-22 21:42:24','admin','glusterfs-cluster','/mnt',NULL,NULL,'Glusterfs','1','glusterfs-crm-1g','admin-quota'),(13,'config-test',NULL,'2018-02-27 10:29:28','admin','glusterfs-cluster','/mnt',NULL,NULL,'Nfs','1','zmc-nfs','admin-quota');
 /*!40000 ALTER TABLE `cloud_storage_mount_info` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -1565,7 +1632,6 @@ CREATE TABLE `cloud_storage_server` (
 
 LOCK TABLES `cloud_storage_server` WRITE;
 /*!40000 ALTER TABLE `cloud_storage_server` DISABLE KEYS */;
-INSERT INTO `cloud_storage_server` VALUES (5,NULL,'2018-02-08 09:58:00','zhaozq14','2018-02-08 09:58:00','zhaozq14','nfs存储提供者','glusterfs-cluster','Nfs',NULL,'生产环境',NULL),(9,NULL,'2018-02-22 14:29:44','admin','2018-02-22 14:29:44','admin','glusterfs服务提供','glusterfs-cluster','Glusterfs',NULL,'生产环境','/dev/vdb');
 /*!40000 ALTER TABLE `cloud_storage_server` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -1608,5 +1674,91 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
+CREATE TABLE `cloud_template_deploy_history` (
+  `history_id` int(11) NOT NULL AUTO_INCREMENT,
+  `create_time` varchar(32) DEFAULT NULL COMMENT '创建时间',
+  `create_user` varchar(32) DEFAULT NULL COMMENT '创建用户',
+  `service_name` varchar(36) DEFAULT NULL COMMENT 'service名称',
+  `app_name` varchar(40) DEFAULT NULL COMMENT '应用名称',
+  `entname` varchar(100) DEFAULT NULL COMMENT '环境名称',
+  `resource_name` varchar(100) DEFAULT NULL COMMENT '环境名称',
+  `cluster_name` varchar(40) DEFAULT NULL COMMENT '集群名称',
+  `template_name` varchar(100) DEFAULT NULL,
+  PRIMARY KEY (`history_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+ CREATE TABLE `cloud_ci_batch_job` (
+  `batch_id` int(11) NOT NULL AUTO_INCREMENT,
+  `job_ids` varchar(200) DEFAULT NULL,
+  `create_time` varchar(32) DEFAULT NULL COMMENT '创建时间',
+  `create_user` varchar(32) DEFAULT NULL COMMENT '创建用户',
+  `last_modify_time` varchar(32) DEFAULT NULL COMMENT '最近修改时间',
+  `last_modify_user` varchar(32) DEFAULT NULL COMMENT '最近修改用户',
+  `build_id` varchar(100) DEFAULT NULL COMMENT 'build时k8s.job名称',
+  `build_status` varchar(32) DEFAULT NULL COMMENT '构建状态',
+  `ent` varchar(100) DEFAULT NULL COMMENT '构建环境',
+  `build_type` varchar(32) DEFAULT NULL COMMENT '构建类型',
+  `percent` int(11) DEFAULT NULL,
+  `messages` text,
+  `batch_name` varchar(50) DEFAULT NULL COMMENT 'batch name',
+  `description` varchar(150) DEFAULT NULL,
+  PRIMARY KEY (`batch_id`)
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8;
+
+CREATE TABLE `cloud_user_perm` (
+  `perm_id` int(11) NOT NULL AUTO_INCREMENT,
+  `user_name` varchar(100) DEFAULT NULL,
+  `group_name` varchar(100) DEFAULT NULL,
+  `parent_user` varchar(100) DEFAULT NULL,
+  `sub_user` varchar(100) DEFAULT NULL,
+  `resource_type` varchar(100) DEFAULT NULL,
+  `name` text DEFAULT NULL,
+  `create_user` varchar(32) DEFAULT NULL,
+  `create_time` varchar(32) DEFAULT NULL,
+  `last_modify_user` varchar(32) DEFAULT NULL,
+  `last_modify_time` varchar(32) DEFAULT NULL,
+  `cluster_name` varchar(100) DEFAULT NULL,
+  `resource_name` text DEFAULT NULL,
+  `ent` varchar(100) DEFAULT NULL,
+  `description` varchar(100) DEFAULT NULL,
+  PRIMARY KEY (`perm_id`)
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8;
+
+create table cloud_perm_role_perm(
+`role_id` int ,
+`perm_name` varchar(200),
+`create_user` varchar(32) DEFAULT NULL,
+`create_time` varchar(32) DEFAULT NULL,
+ UNIQUE KEY `uidx_cloud_perm_role_perm_perm_name_role_id` (`role_id`,`perm_name`)
+ );
+
+CREATE TABLE `cloud_perm_role_user` (
+  `role_id` int(11) DEFAULT NULL,
+  `user_name` varchar(200) DEFAULT NULL,
+  `group_name` varchar(200) DEFAULT NULL,
+  `create_user` varchar(32) DEFAULT NULL,
+  `create_time` varchar(32) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
 -- Dump completed on 2018-03-09 12:30:13
 alter table cloud_cluster_hosts add unique index uidx_cloud_cluster_hosts_ip_api_port_host_type(host_ip,api_port,host_type);
+alter table cloud_app_template add cluster varchar(130) comment "集群名称";
+alter table cloud_app_template add ent varchar(30) comment "环境名称";
+alter table  cloud_app_template  add service_name text comment "service name";
+alter table  cloud_app_template  add app_name varchar(130) comment "应用名称";
+alter table  cloud_template_deploy_history add domain varchar(100) ;
+alter table  cloud_app_template add domain varchar(100) ;
+alter table cloud_app_service add domain varchar(100);
+alter table cloud_ci_batch_job add version varchar(100);
+alter table cloud_build_job add env varchar(4096) comment "构建时环境变量";
+alter table cloud_authority_user add token varchar(32);
+alter table cloud_api_resource add method varchar(32) comment "请求方法";
+alter table cloud_api_resource add parent varchar(132) comment "父节点";
+alter table cloud_code_repostitory add branch  text ;
+alter table cloud_code_repostitory add tag text ;
+alter table cloud_perm_role add is_del int comment "是否删除";
+alter table cloud_container add service varchar(300);
+alter table cloud_container add last_update_time bigint ;
+alter table cloud_app_service add termination_seconds int comment "pod关闭时间";
+alter table cloud_api_resource add unique index uidx_api_url_name_method(api_url,name,method);
+alter table cloud_build_job add unique index uidx_cloud_build_job_item_name (item_name);

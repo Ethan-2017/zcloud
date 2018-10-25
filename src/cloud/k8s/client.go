@@ -29,13 +29,15 @@ func GetMasterIp(cluster string) (string, string) {
 			if strings.Contains(masterData, ",") {
 				masterDatas := strings.Split(masterData, ",")
 				if len(masterDatas) > 1 {
-					return masterDatas[0], masterDatas[1]
+					if len(masterDatas[0]) > 0 {
+						return masterDatas[0], masterDatas[1]
+					}
 				}
 			}
 		}
 	}
 
-	data := []CloudClusterHosts{}
+	data := make([]CloudClusterHosts, 0)
 	searchMap := sql.SearchMap{}
 	searchMap.Put("ClusterName", cluster)
 	searchMap.Put("HostType", "master")

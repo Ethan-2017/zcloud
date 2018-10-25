@@ -69,6 +69,20 @@ func (this *HostsController) Save() {
 	setHostJson(this, data)
 }
 
+// 2018-09-04 10:17
+// 获取主机报表数据
+// @router /api/cluster/hosts/report/:id:int [get]
+func (this *HostsController) GetHostReport() {
+	cloudHost := getHostData(this.Ctx.Input.Param(":id"))
+	cl, err := k8s.GetClient(cloudHost.ClusterName)
+	if err != nil {
+		setHostJson(this, util.ApiResponse(false, "获取数据失败: " + err.Error()))
+		return
+	}
+	data := k8s.DescribeNodeResource(cl,cloudHost.HostIp)
+	r := util.ResponseMap(data, len(data), this.GetString("draw"))
+	setHostJson(this, r)
+}
 
 // 获取主机镜像
 // @router /api/cluster/hosts/images/:id:int [get]
@@ -117,7 +131,9 @@ func (this *HostsController) HostsData() {
 		r = util.ResponseMapError(err.Error())
 	}
 	setHostJson(this, r)
-	go CacheNodeStatus(data, c)
+	if err == nil {
+		go CacheNodeStatus(data, c)
+	}
 }
 
 

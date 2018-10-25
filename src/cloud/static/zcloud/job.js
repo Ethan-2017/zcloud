@@ -73,7 +73,7 @@ function deleteJobSwal(id, detail) {
  * @param id
  */
 function startExecJob(id) {
-    Swal("是否执行该构建", "warning", "确认操作", "不操作", "成功", "失败", " execJob(" + id + ")", "loadJobData()");
+    Swal("是否执行该构建", "warning", "确认操作", "不操作", "成功", "失败", " execJob(" + id + ")", "loadJobData()", 1000);
 }
 
 /**
@@ -102,7 +102,7 @@ function loadJobData(key) {
         "serverSide": true,
         "bInfo": true, //是否显示页脚信息，DataTables插件左下角显示记录数
         "scrollX": true, // 是否允许左右滑动
-        "displayLength": 10, // 默认长度
+        "displayLength": 100, // 默认长度
         "ajax": { // 请求地址
             "url": "/api/ci/job?t=" + new Date().getTime() + "&search=" + key,
             "type": 'get'
@@ -144,10 +144,10 @@ function loadJobData(key) {
             },
             {"data": "LastModifyTime", "sWidth": "9%"},
             {
-                "data": "JobId", "sWidth": "8%", "mRender": function (data) {
+                "data": "JobId", "sWidth": "8%", "mRender": function (data,type, full) {
                 return '<button type="button" title="立刻构建" onclick="startExecJob(' + data + ')" class="btn btn-xs rb-btn-oper"><i class="fa fa-transgender-alt"></i></button>&nbsp;' +
                     '<button type="button" title="最近构建日志" onclick="jobLog(' + data + ')" class="btn btn-xs rb-btn-oper"><i class="fa  fa-hospital-o"></i></button>&nbsp;' +
-                    '<button type="button" title="查看构建仓库组信息" onclick="toRegistryGroup()" class="btn btn-xs rb-btn-oper"><i class="mdi mdi-arrange-send-to-back"></i></button>&nbsp;';
+                    '<button type="button" title="查看构建仓库组信息" onclick="toRegistryGroup(\''+full["RegistryServer"]+'\')" class="btn btn-xs rb-btn-oper"><i class="mdi mdi-arrange-send-to-back"></i></button>&nbsp;';
             }
             },
             {
@@ -171,9 +171,9 @@ function loadJobData(key) {
  * @return {*}
  */
 function deleteJob(id) {
-    var url = "/api/ci/job/" + id
-    var result = del({}, url)
-    result = JSON.stringify(result)
+    var url = "/api/ci/job/" + id;
+    var result = del({}, url);
+    result = JSON.stringify(result);
     return result
 }
 
@@ -197,6 +197,12 @@ function saveJob(jobId) {
         }
     } else {
         data["ImageTa"] = "000";
+    }
+    var select = $("#setSelectDockerfile1").is(":checked");
+    if (select){
+        data["DockerFile"] = $("#select-docker-file").val();
+    }else{
+        data["DockerFile"] = 0
     }
     var url = "/api/ci/job";
     var result = post(data, url);
@@ -327,6 +333,6 @@ function toCreateApp(histroyId) {
  * 转到镜像仓库组
  * 2018-01-31 22:14
  */
-function toRegistryGroup() {
-    window.location.href = "/image/registry/group/list"
+function toRegistryGroup(name) {
+    window.open( "/image/registry/group/detail/" + name, "_blank");
 }

@@ -5,14 +5,14 @@ import (
 	"encoding/json"
 	"strings"
 	"cloud/util"
-	v1 "k8s.io/api/batch/v1"
+	"k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"strconv"
 	"time"
-	"github.com/garyburd/redigo/redis"
 	"cloud/cache"
+	"github.com/astaxie/beego"
 )
 
 // docker build -t ITEMNAME:VERSION -f  /root/docker /root --ulimit nproc=2048:4096  --ulimit nofile=4096:10000
@@ -21,16 +21,35 @@ d=$(date +"%F %T")
 echo "开始构建...$d"
 echo "构建服务器$HOSTNAME"
 echo REGISTRYIP REGISTRYDOMAIN >> /etc/hosts
+echo AuthServerIp AuthServerDomain >> /etc/hosts
 ping REGISTRYDOMAIN -c 1
-dockerd --ip-forward=false --iptables=false --insecure-registry REGISTRY   &>/dev/null &
-dockerd --ip-forward=false --iptables=false --insecure-registry REGISTRY  &>/dev/null &
-echo $DOCKERFILE
+ping AuthServerDomain -c 1
+dockerd --ip-forward=false --iptables=false --insecure-registry REGISTRY  --storage-driver=devicemapper  &>/dev/null &
+d=$(date +"%F %T")
+echo "$d 开始编译文件,,,,"
+SCRIPT
+d=$(date +"%F %T")
+echo "$d 编译完成..."
+set +x
 sleep 10
+echo $DOCKERFILE
+seq="1 2 3 4 5 6 7 8 9 10"
+
+for i in $seq
+do
+  docker ps |grep IMAGE && break
+  sleep 3
+  d=$(date +"%F %T")
+  echo "请等待.. $i  $d" 
+done
+
 cat > /root/docker <<EOF
 $DOCKERFILE
 EOF
 cat /root/docker
-seq="1 2 3 4 5 6"
+echo ""
+d=$(date +"%F %T")
+echo "开始构建... $d"
 for i in $seq
 do
    docker build -t REGISTRY/REGISTRYGROUP/ITEMNAME:VERSION -f  /root/docker /root --ulimit nproc=MINPROC:MAXPROC  --no-cache --ulimit nofile=MINFILE:MAXFILE  2>&1
@@ -41,6 +60,14 @@ done
 if [ $? -eq 0 ] ; then
 echo "镜像信息"
 docker images |grep REGISTRY/REGISTRYGROUP/ITEMNAME |grep VERSION
+if [ $? -gt 0 ] ; then
+         d=$(date +"%F %T")
+         echo "完成构建...$d"
+         echo "构建失败"
+         echo "构建镜像失败了..$d" 
+         echo "完成构建...$d"
+         exit 0
+fi
 mkdir /root/.docker -p
 cat > /root/.docker/config.json <<EOF
 {
@@ -128,6 +155,18 @@ type JobParam struct {
 	RegistryAuth string
 	// 集群名称
 	ClusterName string
+	// 认证服务器IP地址
+	AuthServerIp string
+	// 认证服务器域名
+	AuthServerDomain string
+	// 构建脚本
+	Script string
+	// 环境变量
+	Env string
+	// 类型
+	Type string
+	// 服务器地址
+	ServerAddress string
 }
 
 // 替换buildcmd
@@ -153,17 +192,17 @@ func setJobInitParam(param JobParam) JobParam {
 	if param.Namespace == "" {
 		param.Namespace = util.Namespace("job", "job")
 	}
-	//if param.Images == "" {
-	param.Images = "docker"
-	//}
+	if param.Images == "" {
+		param.Images = "docker"
+	}
 	if len(param.Command) == 0 {
 		param.Command = []string{"sh", "/build/build-cmd", ";", "exit", "0"}
 	}
 	if param.Cpu == 0 {
-		param.Cpu = 1
+		param.Cpu = 2
 	}
 	if param.Memory == 0 {
-		param.Memory = 512
+		param.Memory = 4096
 	}
 	return param
 }
@@ -173,6 +212,7 @@ func setJobInitParam(param JobParam) JobParam {
 func getBuild(param JobParam) string {
 	build := replace(buildCmd, "MAXFILE", param.NoFileMax)
 	build = replace(build, "MINFILE", param.NoFileMin)
+	build = replace(build, "SCRIPT", replaceVar(param.Itemname, param.Script))
 	build = replace(build, "MINPROC", param.NoProcMin)
 	build = replace(build, "MAXPROC", param.NoProcMax)
 	build = replace(build, "ITEMNAME", param.Itemname)
@@ -181,6 +221,8 @@ func getBuild(param JobParam) string {
 	build = replace(build, "REGISTRYDOMAIN", param.RegistryDomain)
 	build = replace(build, "REGISTRYGROUP", param.RegistryGroup)
 	build = replace(build, "REGISTRY", param.RegistryServer)
+	build = replace(build, "AuthServerIp", param.AuthServerIp)
+	build = replace(build, "AuthServerDomain", param.AuthServerDomain)
 	build = replace(build, "AUTH", param.Auth) // base64 user:passwd
 	return build
 }
@@ -214,30 +256,48 @@ func getJobParam(conf map[string]interface{}) v1.Job {
 	return job
 }
 
+// 物理机系统和job系统必须一致
 // 获取配置server创建所需参数
 // 2018-01-25 16:42
 func getJobServerParam(param JobParam) ServiceParam {
 	serviceParam := ServiceParam{}
-	serviceParam.StorageData = `[{"ContainerPath":"/var/lib/docker/","Volume":"","HostPath":"/home/data/docker/"}]`
+	dir := beego.AppConfig.String("docker.data.dir") + `data/source/`
+	installDir := beego.AppConfig.String("docker.install.dir")
+	serviceParam.StorageData = `[
+        {"ContainerPath":"` + installDir + `","Volume":"","HostPath":"` + installDir + `"},
+        {"ContainerPath":"` + dir + `","Volume":"","HostPath":"` + dir + `"},
+        {"ContainerPath":"/var/run/docker.sock","Volume":"","HostPath":"/var/run/docker.sock"}, 
+        {"ContainerPath":"/usr/bin/docker","Volume":"","HostPath":"/usr/bin/docker"},
+        {"ContainerPath":"/etc/resolv.conf","Volume":"","HostPath":"/etc/resolv.conf"}]`
 	serviceParam.Namespace = param.Namespace
 	if len(param.ConfigureData) == 0 {
 		configureData := getBuildConfigdata(param)
 		serviceParam.ConfigureData = configureData
+	}
+	if len(param.Env) > 0 {
+		serviceParam.Envs = param.Env
 	}
 	return serviceParam
 }
 
 // 获取是否要再指定label的机器构建
 // 2018-01-25 16;51
-func getJobLables(conf map[string]interface{}, clientset kubernetes.Clientset) map[string]interface{} {
+func getJobLables(conf map[string]interface{}, clientSet kubernetes.Clientset) map[string]interface{} {
 	// 获取是否标签有ci的,有的话就去有标签的构建
-	nodes := GetNodes(clientset, "ci=build")
+	nodes := GetNodes(clientSet, "ci=build")
 	if len(nodes) > 0 {
 		selector := `{"Lables":"ci","Value":"build"}`
 		nodeSelector := getNodeSelectorNode(selector)
 		conf["spec"].(map[string]interface{})["template"].(map[string]interface{})["spec"].(map[string]interface{})["nodeSelector"] = nodeSelector
 	}
 	return conf
+}
+
+// 替换环境变量
+// 替换项目名称
+func replaceVar(item string, str string)  string{
+  str = strings.Replace(str, "$item", item, -1)
+  return str
 }
 
 // 创建job，主要在构建时使用
@@ -251,12 +311,18 @@ func CreateJob(param JobParam) string {
 		serviceParam.ConfigureData = param.ConfigureData
 	}
 
-	env := []map[string]interface{}{
-		map[string]interface{}{
-			"name":  "DOCKERFILE",
-			"value": param.Dockerfile,
-		},
+	selector := map[string]interface{}{
+		"kubernetes.io/hostname": param.ServerAddress,
 	}
+
+	envList := getEnv(serviceParam.Envs)
+
+	env := map[string]interface{}{
+		"name":  "DOCKERFILE",
+		"value": replaceVar(param.Itemname, param.Dockerfile),
+	}
+	envList = append(envList, env)
+	logs.Info("job获取到环境变量", util.ObjToString(envList))
 
 	volumes, volumeMounts := getVolumes(serviceParam.StorageData, serviceParam.ConfigureData, serviceParam)
 	conf := map[string]interface{}{
@@ -272,16 +338,19 @@ func CreateJob(param JobParam) string {
 					"name": param.Jobname,
 				},
 				"spec": map[string]interface{}{
+
 					"containers": []map[string]interface{}{
 						map[string]interface{}{
-							"name":         param.Jobname,
-							"image":        param.Images,
-							"command":      param.Command,
-							"volumeMounts": volumeMounts,
+							"name":            param.Jobname,
+							"image":           param.Images,
+							"imagePullPolicy": "IfNotPresent",
+							"command":         param.Command,
+							"volumeMounts":    volumeMounts,
 							"securityContext": map[string]interface{}{
 								"capabilities": map[string]interface{}{},
 								"privileged":   true,
 							},
+
 							"resources": map[string]interface{}{
 								"limits": map[string]interface{}{
 									"memory": strconv.Itoa(param.Memory) + "Mi",
@@ -292,7 +361,7 @@ func CreateJob(param JobParam) string {
 									"cpu":    param.Cpu,
 								},
 							},
-							"env": env,
+							"env": envList,
 						},
 					},
 					"restartPolicy":         "OnFailure",
@@ -320,12 +389,28 @@ func CreateJob(param JobParam) string {
 	serviceParam.Cl2 = cl2
 	serviceParam.Cl3 = clientSet
 
+	secretsName := GetDockerImagePullName(strings.Split(param.Images, "/")[0])
+	isExists := SecretIsExists(clientSet, param.Namespace, secretsName)
+	if isExists{
+		conf["spec"].(map[string]interface{})["template"].(map[string]interface{})["spec"].(map[string]interface{})["imagePullSecrets"] = []map[string]interface{}{
+			map[string]interface{}{
+				"name": secretsName,
+			},
+		}
+	}
+
 	if ! param.NoUpdateConfigMap {
 		logs.Info("获取到job的configmap", serviceParam.ConfigureData)
 		CreateConfigmap(serviceParam)
 	}
 
 	conf = getJobLables(conf, clientSet)
+
+	if len(param.ServerAddress) > 0 {
+		conf["spec"].(map[string]interface{})["template"].(map[string]interface{})["spec"].(map[string]interface{})["nodeSelector"] = selector
+		logs.Info("添加选择器", util.ObjToString(selector))
+	}
+
 	obj := getJobParam(conf)
 	deployments, err := clientSet.BatchV1().Jobs(param.Namespace).Create(&obj)
 
@@ -336,13 +421,18 @@ func CreateJob(param JobParam) string {
 	return param.Jobname
 }
 
-
 // 获取job的pod数据
 // 2018-01-26 18:01
 func getJobPod(pod string, cl kubernetes.Clientset, namespace string) ([]corev1.Pod, error) {
 	listOpt := meta_v1.ListOptions{}
 	listOpt.LabelSelector = "job-name=" + pod
 	pods, err := cl.CoreV1().Pods(namespace).List(listOpt)
+	if len(pods.Items) == 0 {
+		pods, err := cl.CoreV1().Pods(namespace).Get(pod, meta_v1.GetOptions{})
+		s := make([]corev1.Pod, 0)
+		s = append(s, *pods)
+		return s, err
+	}
 	return pods.Items, err
 }
 
@@ -351,29 +441,38 @@ func getJobPod(pod string, cl kubernetes.Clientset, namespace string) ([]corev1.
 //cl,_ := k8s.GetClient("10.16.55.114","8080")
 //k8s.GetJobLogs(cl, "job-33e87d842bb7712c9688ed4f99c94336-ss8hw")
 
-
-func GetJobLogs(cl kubernetes.Clientset, pod string, namespace string) string {
-	podsdata := make([]corev1.Pod, 0)
+func GetJobLogs(cl kubernetes.Clientset, pod string, namespace string, line int64 ) string {
+	podsData := make([]corev1.Pod, 0)
 	var err error
+	if line  > 200000 {
+		// 大概4M左右
+		line = 200000
+	}
 	if cache.PodCache != nil {
 		r := cache.PodCache.Get(pod + namespace)
-		rdata, err := redis.String(r, nil)
-		if err == nil {
-			json.Unmarshal([]byte(rdata), &podsdata)
-			logs.Info("从redis获取到构建任务pod", len(podsdata), " ",pod+namespace)
+		s := util.RedisObj2Obj(r, &podsData)
+		if s {
+			logs.Info("从redis获取到构建任务pod", len(podsData), " ", pod+namespace)
 		}
 	}
-	if len(podsdata) == 0 {
-		podsdata, err = getJobPod(pod, cl, namespace)
-		if cache.PodCache != nil && len(podsdata) > 0 {
-			cache.PodCache.Put(pod+namespace, util.ObjToString(podsdata), time.Second*500)
+	if len(podsData) == 0 {
+		logs.Info(pod, namespace)
+		podsData, err = getJobPod(pod, cl, namespace)
+		if err != nil{
+			return err.Error()
+		}
+		if cache.PodCache != nil && len(podsData) > 0 {
+			cache.PodCache.Put(pod+namespace, util.ObjToString(podsData), time.Second*500)
 		}
 	}
-	if len(podsdata) > 0 && err == nil {
+	logs.Info("获取到pod", podsData[0].Name)
+	if len(podsData) > 0 && err == nil {
 		opt := corev1.PodLogOptions{}
-		bt := int64(1024 * 1024 * 2)
-		opt.LimitBytes = &bt
-		r := cl.CoreV1().Pods(namespace).GetLogs(podsdata[0].Name, &opt)
+		//bt := int64(1024 * 1024 * 2)
+		//opt.LimitBytes = &bt
+		line := line
+		opt.TailLines = &line
+		r := cl.CoreV1().Pods(namespace).GetLogs(podsData[0].Name, &opt)
 		c := r.Do()
 		l, _ := c.Raw()
 		if c.Error() == nil {
@@ -385,18 +484,18 @@ func GetJobLogs(cl kubernetes.Clientset, pod string, namespace string) string {
 
 // 构建完成后删除job
 // 2018-01-26 16:34
-func DeleteJob(clientset kubernetes.Clientset, jobName string, namespace string) {
+func DeleteJob(clientSet kubernetes.Clientset, jobName string, namespace string) {
 	if namespace == "" {
 		namespace = util.Namespace("job", "job")
 	}
-	err := clientset.BatchV1().Jobs(namespace).Delete(jobName, &meta_v1.DeleteOptions{})
+	err := clientSet.BatchV1().Jobs(namespace).Delete(jobName, &meta_v1.DeleteOptions{})
 	if err != nil {
 		logs.Error("删除构建job失败", err)
 	}
 
-	podsdata, err := getJobPod(jobName, clientset, namespace)
-	if len(podsdata) > 0 && err == nil {
-		err = clientset.CoreV1().Pods(namespace).Delete(podsdata[0].Name, &meta_v1.DeleteOptions{})
+	podData, err := getJobPod(jobName, clientSet, namespace)
+	if len(podData) > 0 && err == nil {
+		err = clientSet.CoreV1().Pods(namespace).Delete(podData[0].Name, &meta_v1.DeleteOptions{})
 		if err != nil {
 			logs.Error("删除构建pod失败", err)
 		}
@@ -409,17 +508,65 @@ func getJobResult(jobParam JobParam, keyword string, timeout int, logtp string) 
 	cl, _ := GetClient(jobParam.ClusterName)
 	count := 0
 	for {
-		log := GetJobLogs(cl, jobParam.Jobname, jobParam.Namespace)
+		log := GetJobLogs(cl, jobParam.Jobname, jobParam.Namespace, 200000)
 		logs.Info("获取到log", log)
 		if strings.Contains(log, keyword) || count > timeout {
 			DeleteJob(cl, jobParam.Jobname, jobParam.Namespace)
-			if logtp == "nginx"{
+			if logtp == "nginx" {
 				return getNginxJobLog(log)
-			}else{
+			} else {
 				return log
 			}
 		}
 		count += 1
 		time.Sleep(time.Second * 1)
 	}
+}
+
+// 清除无效的任务计划
+// 构建完成后删除job
+// 2018-01-26 16:34
+func ClearJob(clientSet kubernetes.Clientset) {
+	namespace := util.Namespace("job", "job")
+	jobs, err := clientSet.BatchV1().Jobs(namespace).List(meta_v1.ListOptions{})
+	if err != nil {
+		logs.Error("删除job获取列表失败", err)
+	}
+	if len(jobs.Items) == 0 {
+		return
+	}
+
+	// 删除pod
+	for _, v := range jobs.Items {
+		pod, err := getJobPod(v.Name, clientSet, namespace)
+		if len(pod) > 0 && err == nil {
+			if pod[0].Status.Phase == "Failed" || pod[0].Status.Phase == "Succeeded" || pod[0].Status.Phase == "Unknown" {
+				err = clientSet.CoreV1().Pods(namespace).Delete(pod[0].Name, &meta_v1.DeleteOptions{})
+
+			}
+			if pod[0].Status.Phase == "Pending" {
+				if time.Now().Unix()-pod[0].CreationTimestamp.Unix() > 3000 {
+					err = clientSet.CoreV1().Pods(namespace).Delete(pod[0].Name, &meta_v1.DeleteOptions{})
+				}
+			}
+			if err != nil {
+				logs.Error("删除构建pod失败", err)
+			} else {
+				logs.Info("删除job中的pod成功", util.ObjToString(pod))
+			}
+		}
+	}
+
+	// 删除job
+	for _, v := range jobs.Items {
+		if v.Status.Failed == 1 || v.Status.Succeeded == 1 ||  v.Status.Failed == 2 {
+			err := clientSet.BatchV1().Jobs(namespace).Delete(v.Name, &meta_v1.DeleteOptions{})
+			if err != nil {
+				logs.Error("删除构建job失败", err)
+			} else {
+				logs.Info("删除job成功", util.ObjToString(v))
+			}
+		}
+	}
+
 }

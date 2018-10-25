@@ -13,6 +13,8 @@ import (
 	"golang.org/x/crypto/openpgp/errors"
 	"strings"
 	"cloud/controllers/base/storage"
+	"cloud/controllers/image"
+	"cloud/userperm"
 )
 
 type ServiceController struct {
@@ -24,6 +26,7 @@ type ServiceController struct {
 // Service 管理入口页面
 // @router /application/service/list [get]
 func (this *ServiceController) ServiceList() {
+	go registry.UpdateGroupImageInfo()
 	this.Data["ServiceName"] = this.GetString("name")
 	this.TplName = "application/service/list.html"
 }
@@ -67,6 +70,8 @@ func (this *ServiceController) ImageAdd() {
 	if len(tag) > 1 {
 		this.Data["tag"] = tag[1]
 	}
+	images := registry.GetImageTag(service.ImageTag)
+	this.Data["images"] = images
 	this.TplName = "application/service/image.html"
 }
 
@@ -104,6 +109,14 @@ func (this *ServiceController) HealthAdd() {
 	this.TplName = "application/service/add_health.html"
 }
 
+// Service 修改日志路径页面
+// @router /application/service/log/add/:id:int [get]
+func (this *ServiceController) LogPathChange() {
+	service := getService(this)
+	this.Data["data"] = service
+	this.TplName = "application/service/add_log.html"
+}
+
 // Service 创建服务添加健康检查页面
 // @router /application/service/health/add/:id:int [get]
 func (this *ServiceController) HealthChange() {
@@ -118,8 +131,12 @@ func (this *ServiceController) HealthChange() {
 	conf.HealthCmd = "ls /tmp"
 	conf.HealthInitialDelay = "30"
 	if len(service.HealthData) > 10 {
-		json.Unmarshal([]byte(service.HealthData), &conf)
+		err := json.Unmarshal([]byte(service.HealthData), &conf)
+		if err != nil{
+			logs.Error("检查检查转换错误", err.Error())
+		}
 	}
+	logs.Info(util.ObjToString(conf), service.HealthData)
 	this.Data["config"] = conf
 	this.Data["data"] = service
 	this.TplName = "application/service/change_health.html"
@@ -155,9 +172,18 @@ func (this *ServiceController) ServiceSave() {
 		this.Ctx.WriteString("参数错误" + err.Error())
 		return
 	}
-	util.SetPublicData(d, getServiceUser(this), &d)
+	oldUser := d.CreateUser
+	user := getServiceUser(this)
+
+	util.SetPublicData(d, user, &d)
+	if user == "admin" {
+		if len(oldUser) > 0 && oldUser != "admin"{
+			d.CreateUser = oldUser
+		}
+	}
 
 	serviceData := GetServiceData(d.ServiceName, d.ClusterName, d.AppName)
+	logs.Info("创建服务数据", util.ObjToString(d))
 	if serviceData.ServiceId > 0 {
 		logs.Error("创建服务失败", "该服务已经存在")
 		responseData(err, this, d.ServiceName, "该服务已经存在")
@@ -165,7 +191,7 @@ func (this *ServiceController) ServiceSave() {
 	}
 
 	status, msg := k8s.CheckQuota(
-		getServiceUser(this), d.Replicas,
+		d.CreateUser, d.Replicas,
 		int64(d.Cpu), d.Memory,
 		d.ResourceName)
 
@@ -175,23 +201,39 @@ func (this *ServiceController) ServiceSave() {
 		return
 	}
 
-	serviceParam := getParam(d, d.CreateUser)
-	yaml, err := k8s.CreateServicePod(serviceParam)
+	d, err  = ExecDeploy(d, false)
 	if err != nil {
 		logs.Error("创建服务失败", "k8s执行错误", err.Error())
 		responseData(err, this, d.ServiceName, "创建服务时失败")
 		return
 	}
 
-	d.Yaml = yaml
-	saveServiceDeploy(d)
+	if len(d.Domain) > 0 {
+		createLbConfig(d, d.ClusterName, d.Entname, d.AppName, d.Domain, d.CreateUser, d.ResourceName)
+		go k8s.CreateNginxConf("")
+	}
 
 	data, msg := util.SaveResponse(nil, "保存成功")
-	util.SaveOperLog(getServiceUser(this), *this.Ctx,
+	util.SaveOperLog(d.CreateUser, *this.Ctx,
 		"保存Service 配置 "+msg, d.ServiceName)
 	setServiceJson(this, data)
 	saveAppData(d)
 
+}
+
+// 创建服务公用
+func ExecDeploy(d app.CloudAppService, isRedeploy bool) (app.CloudAppService, error) {
+	serviceParam := getParam(d, d.CreateUser)
+	serviceParam.IsRedeploy = isRedeploy
+	yaml, err := k8s.CreateServicePod(serviceParam)
+	if err != nil {
+		logs.Error("创建服务失败", "k8s执行错误", err.Error())
+		return d, err
+	}
+
+	d.Yaml = yaml
+	saveServiceDeploy(d)
+	return d, nil
 }
 
 // Service 名称数据
@@ -204,14 +246,30 @@ func (this *ServiceController) GetServiceName() {
 	key := strings.Split(app.ServiceSearchKey, ",")
 
 	searchMap := sql.GetSearchMapValue(key, *this.Ctx, sql.SearchMap{})
-	searchMap.Put("CreateUser", getServiceUser(this))
 	searchSql := sql.SearchSql(
 		app.CloudAppService{},
 		app.SelectCloudAppService,
 		searchMap)
 
 	sql.Raw(searchSql).QueryRows(&data)
-	setServiceJson(this, data)
+
+	user := getServiceUser(this)
+	perm := userperm.GetResourceName("服务", user)
+	permApp := userperm.GetResourceName("应用", user)
+	result := make([]app.CloudAppServiceName, 0)
+	for _, d := range data {
+		// 不是自己创建的才检查
+		if d.CreateUser != user && user != "admin" {
+			if ! userperm.CheckPerm(d.AppName+";"+d.ResourceName+";"+d.ServiceName, d.ClusterName, d.Entname, perm) {
+				if ! userperm.CheckPerm(d.AppName, d.ClusterName, d.Entname, permApp) {
+					continue
+				}
+			}
+		}
+		result = append(result, d)
+	}
+
+	setServiceJson(this, result)
 }
 
 // Service 数据
@@ -222,13 +280,13 @@ func (this *ServiceController) ServiceData() {
 	qk := strings.Split(app.ServiceSearchKey, ",")
 	user := getServiceUser(this)
 	searchMap := sql.GetSearchMapValue(qk, *this.Ctx, sql.SearchMap{})
-	searchMap.Put("CreateUser", user)
+	//searchMap.Put("CreateUser", user)
 
 	searchSql := sql.SearchSql(
 		app.CloudAppService{},
 		app.SelectCloudAppService,
 		searchMap)
-
+	searchSql = sql.GetWhere(searchSql, searchMap)
 	if key != "" {
 		q := `and (service_name like "%?%") `
 		searchSql += strings.Replace(q, "?", sql.Replace(key), -1)
@@ -240,12 +298,12 @@ func (this *ServiceController) ServiceData() {
 		&data,
 		app.CloudAppService{})
 
-	result := GetServiceRunData(data)
+	result := GetServiceRunData(data, user)
 	setServiceJson(this,
 		util.GetResponseResult(err, this.GetString("draw"),
 			result,
 			sql.CountSearchMap("cloud_app_service",
-				sql.GetSearchMapV("CreateUser", user),
+				sql.SearchMap{},
 				int(num), key)))
 
 	go GoServerThread(data)
@@ -397,6 +455,7 @@ func (this *ServiceController) ServiceUpdate() {
 
 	service := getService(this)
 	updateType := this.GetString("type")
+	user := util.GetUser(this.GetSession("username"))
 
 	// 修改端口数据
 	if updateType == "port" {
@@ -427,11 +486,32 @@ func (this *ServiceController) ServiceUpdate() {
 	// 升级环境变量
 	if updateType == "env" {
 		env := this.GetString("env")
-		if env == "" || !strings.Contains(env, "=") || len(env) < 3 {
+		if !strings.Contains(env, "=") || len(env) < 3 {
 			responseData(errors.InvalidArgumentError("变量数据异常"), this, service.ServiceName, "操作失败")
 			return
 		}
 		service.Envs = env
+	}
+
+	// 2018-10-11 10:30
+	// 更新日志路径
+	if updateType == "log" {
+		logPath := this.GetString("logPath")
+		if len(logPath) < 3 {
+			responseData(errors.InvalidArgumentError("日志路径信息错误"), this, service.ServiceName, "操作失败")
+			return
+		}
+
+		service.LogPath = logPath
+		// 更新filebeat的配置文件
+		k8s.CreateFilebeatConfig(getParam(service, user))
+		namespace := util.Namespace(service.AppName, service.ResourceName)
+		client, _ := k8s.GetClient(service.ClusterName)
+		status := k8s.CheckPodName(namespace, util.Namespace(service.ServiceName, service.ServiceVersion), client, "filebeat")
+		if status {
+			responseData(nil, this, service.ServiceName, "操作完成")
+			return
+		}
 	}
 
 	// 升级镜像版本
@@ -442,10 +522,6 @@ func (this *ServiceController) ServiceUpdate() {
 		if version != tags[1] {
 			service.ImageTag = tags[0] + ":" + version
 		}
-		//} else {
-		//	responseData(errors.InvalidArgumentError("镜像版本一致"), this, service.ServiceName, "操作失败")
-		//	return
-		//}
 		interval, err := this.GetInt("MinReady")
 		if err != nil || interval > 60 || interval < 2 {
 			responseData(errors.InvalidArgumentError("更新间隔错误,可选范围为:2-60"), this, service.ServiceName, "操作失败")
@@ -475,12 +551,70 @@ func (this *ServiceController) ServiceUpdate() {
 			return
 		}
 	}
-
-	user := util.GetUser(this.GetSession("username"))
+	
 	err := ExecUpdate(service, updateType, user)
 	if err == nil {
 		responseData(err, this, service.ServiceName, "操作成功")
 		return
 	}
 	responseData(err, this, service.ServiceName, "操作失败")
+}
+
+func getServiceName(name string) string  {
+  name = strings.Replace(name, "--1", "", -1)
+	name = strings.Replace(name, "--2", "", -1)
+	return name
+}
+
+// 替换空格
+func replaceStr(rows string) string {
+	for i :=0 ; i <= 3;i++ {
+		rows = strings.Replace(rows, "  ", " ", -1)
+	}
+	return rows
+}
+
+// 杀死容器filebeat命令
+func killContainer(process string, v app.CloudAppService , container app.CloudContainerName)  {
+	if len(process) > 0 {
+		p := strings.Split(process, "\n")
+		for _, rows := range p {
+			rows = replaceStr(rows)
+			if strings.Contains(rows, " filebeat") {
+				pid := strings.Split(rows, " ")
+				logs.Info(rows, pid, util.ObjToString(pid))
+				if len(pid) > 6 {
+					kill := []string{"kill", "-9", pid[1]}
+					r := k8s.Exec(v.ClusterName, container.ContainerName, util.Namespace(v.AppName, v.ResourceName), "filebeat", kill)
+					logs.Info(r, v.ClusterName, container.ContainerName)
+				}
+			}
+		}
+	}
+}
+
+// 2018/10/11 11:27:06
+// 批量更新和重启容器
+func MakeFilebeatConfig(Entname string, clusterName string)  {
+	ps := []string{"ps","aux"}
+
+	searchMap := sql.SearchMap{}
+	searchMap.Put("Entname", Entname)
+	searchMap.Put("ClusterName", clusterName)
+	data := getServiceData(searchMap, app.SelectCloudAppService)
+	for _, v := range data{
+		if len(v.LogPath) > 0 {
+			logs.Info(v.LogPath, len(v.LogPath), v.ServiceName)
+			k8s.CreateFilebeatConfig(getParam(v, "admin"))
+			searchMap.Put("AppName", v.AppName)
+			searchMap.Put("ServiceName", getServiceName(v.ServiceName))
+			containers := make([]app.CloudContainerName, 0)
+			sql.Raw(sql.SearchSql(app.CloudContainerName{}, app.SelectCloudContainer, searchMap)).QueryRows(&containers)
+			for _, container := range containers{
+				process := k8s.Exec(v.ClusterName, container.ContainerName, util.Namespace(v.AppName, v.ResourceName), "filebeat", ps)
+				logs.Info(process, v.ClusterName, container.ContainerName)
+				killContainer(process, v, container)
+			}
+		}
+	}
 }

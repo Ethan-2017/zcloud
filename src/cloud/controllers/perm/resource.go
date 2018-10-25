@@ -5,6 +5,7 @@ import (
 	"cloud/util"
 	"github.com/astaxie/beego"
 	"cloud/models/perm"
+	"strings"
 )
 
 type ResourceController struct {
@@ -36,7 +37,7 @@ func (this *ResourceController) ResourceAdd() {
 // router /api/perm/resource [get]
 func (this *ResourceController) ResourceData() {
 	// api资源数据
-	data := []perm.CloudApiResource{}
+	data := make([]perm.CloudApiResource, 0)
 	q := sql.SearchSql(perm.CloudApiResource{}, perm.SelectCloudApiResource, sql.SearchMap{})
 	sql.Raw(q).QueryRows(&data)
 	setResourceJson(this, data)
@@ -53,7 +54,7 @@ func (this *ResourceController) ResourceSave() {
 		return
 	}
 	util.SetPublicData(d, util.GetUser(this.GetSession("username")), &d)
-	
+
 	q := sql.InsertSql(d, perm.InsertCloudApiResource)
 	if d.ResourceId > 0 {
 		searchMap := sql.SearchMap{}
@@ -72,7 +73,7 @@ func (this *ResourceController) ResourceSave() {
 // router /api/perm/resource/name [get]
 func (this *ResourceController) ResourceDataName() {
 	// api资源数据
-	data := []perm.CloudApiResource{}
+	data := make([]perm.CloudApiResource, 0)
 	q := sql.SearchSql(perm.CloudApiResource{},
 		perm.SelectCloudApiResource,
 		sql.SearchMap{})
@@ -80,10 +81,94 @@ func (this *ResourceController) ResourceDataName() {
 	setResourceJson(this, data)
 }
 
+// 2018-08-29 14:31
+// 更新资源
+func UpdateResource() {
+	lock := util.Lock{}
+	data := make([]perm.CloudApiResource, 0)
+	sql.Raw(perm.SelectCloudApiResource).QueryRows(&data)
+	for _, v := range data {
+		lock.Put(v.Name+v.ApiUrl+v.Method+v.ApiType+v.Parent, "1")
+	}
+	//sql.Raw(perm.DeleteCloudApiResource).Exec()
+	apis := beego.APIS
+	for _, v := range apis {
+		vs := strings.Split(v, "|")
+		if len(vs) > 4 {
+			if len(vs[2]) > 0 {
+
+				p := perm.CloudApiResource{}
+				p.CreateUser = "system"
+				p.CreateTime = util.GetDate()
+				p.ApiUrl = vs[0]
+				p.ApiUrl = strings.Replace(p.ApiUrl, "//", "/", -1)
+				p.Method = strings.Replace(strings.Split(vs[1], ":")[0], "[", "", -1)
+				p.Method = strings.Replace(p.Method, "map", "", -1)
+				p.Name = vs[2]
+				p.ApiType = vs[3]
+				p.Parent = vs[4]
+				if _, ok := lock.Get(p.Name + p.ApiUrl + p.Method + p.ApiType + p.Parent); ok {
+					continue
+				}
+				sql.Exec(sql.InsertSql(p, perm.InsertCloudApiResource))
+			}
+		}
+	}
+}
+
+// 2018-08-30 15:24
+// 获取资源树
+// @router /api/perm/resource/tree [get]
+func (this *ResourceController) GetResourceTree() {
+	data3 := make([]perm.CloudApiResource, 0)
+	data4 := make([]perm.CloudApiResource, 0)
+	data5 := make([]perm.CloudApiResource, 0)
+	sql.Raw(perm.SelectPerm3).QueryRows(&data3)
+	sql.Raw(perm.SelectPerm4).QueryRows(&data4)
+	sql.Raw(perm.SelectPerm5).QueryRows(&data5)
+	d := map[string]interface{}{
+	}
+	// 获取一级菜单
+	for _, v := range data3 {
+		if _, ok := d[v.Parent ]; !ok {
+			if v.Parent == "网络管理" || v.Parent == "集群管理" || v.Parent == "" || v.Parent == "用户中心"{
+				continue
+			}
+			d[v.Parent ] = map[string]interface{}{
+				v.ApiType: map[string]interface{}{
+				},
+			}
+		}
+		if _, ok := d[v.Parent ].(map[string]interface{})[v.ApiType ]; !ok {
+			d[v.Parent ].(map[string]interface{})[v.ApiType ] = map[string]interface{}{}
+
+		}
+		if _, ok := d[v.Parent ].(map[string]interface{})[v.ApiType ].(map[string]interface{})[v.Name ]; !ok {
+			d[v.Parent ].(map[string]interface{})[v.ApiType ].(map[string]interface{})[v.Name ] = map[string]interface{}{
+			}
+		}
+		for _, v2 := range data4 {
+			if v2.ApiType == v.Name {
+				d[v.Parent].(map[string]interface{})[v.ApiType ].(map[string]interface{})[v.Name ].(map[string]interface{})[v2.Name ] = map[string]interface{}{
+				}
+			}
+			for _, v3 := range data5 {
+				if v3.ApiType == v2.Name {
+					if _, ok := d[v.Parent].(map[string]interface{})[v.ApiType].(map[string]interface{})[v.Name].(map[string]interface{})[v2.Name]; ok {
+						d[v.Parent].(map[string]interface{})[v.ApiType].(map[string]interface{})[v.Name].(map[string]interface{})[v2.Name].(map[string]interface{})[v3.Name ] = map[string]interface{}{
+						}
+					}
+				}
+			}
+		}
+	}
+	setResourceJson(this, d)
+}
+
 // api资源数据
 // @router /api/perm/resource [get]
 func (this *ResourceController) ResourceDatas() {
-	data := []perm.CloudApiResource{}
+	data := make([]perm.CloudApiResource, 0)
 	searchMap := sql.SearchMap{}
 	id := this.Ctx.Input.Param(":id")
 	key := this.GetString("search")
@@ -96,12 +181,12 @@ func (this *ResourceController) ResourceDatas() {
 		searchSql += " where 1=1 and (api_url like \"%" + key + "%\" or description like \"%" + key + "%\")"
 	}
 
-	num, _ := sql.OrderByPagingSql(searchSql, "resource_id",
+	num, _ := sql.OrderByPagingSql(searchSql, "api_url",
 		*this.Ctx.Request,
 		&data,
 		perm.CloudApiResource{})
 
-    r := util.ResponseMap(data, sql.Count("cloud_api_resource", int(num), key), this.GetString("draw"))
+	r := util.ResponseMap(data, sql.Count("cloud_api_resource", int(num), key), this.GetString("draw"))
 	setResourceJson(this, r)
 }
 

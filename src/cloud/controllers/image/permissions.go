@@ -60,7 +60,7 @@ func (this *RegistryPermController) RegistryPermSave() {
 	}
 	searchMap := sql.SearchMap{}
 	searchMap.Put("PermissionsId", d.PermissionsId)
-	masterData := []registry.CloudRegistryPermissions{}
+	masterData := make([]registry.CloudRegistryPermissions, 0)
 
 	q := sql.SearchSql(d, registry.SelectCloudRegistryPermissions, searchMap)
 	sql.Raw(q).QueryRows(&masterData)
@@ -76,7 +76,7 @@ func (this *RegistryPermController) RegistryPermSave() {
 			registry.UpdateCloudRedisPermExclude)
 	}
 	sql.Raw(q).Exec()
-
+	sql.Exec(registry.UpdateClusterName)
 	data, msg := util.SaveResponse(err, "名称已经被使用")
 	util.SaveOperLog(
 		this.GetSession("username"),
@@ -89,7 +89,7 @@ func (this *RegistryPermController) RegistryPermSave() {
 // 仓库服务器数据
 // @router /api/registry [get]
 func (this *RegistryPermController) RegistryPerm() {
-	data := []registry.CloudRegistryPermissions{}
+	data := make([]registry.CloudRegistryPermissions, 0)
 	searchMap := sql.SearchMap{}
 	project := this.GetString("project")
 	key := this.GetString("search")
@@ -115,7 +115,7 @@ func (this *RegistryPermController) RegistryPerm() {
 		&data,
 		registry.CloudRegistryPermissions{})
 
-	result := []registry.CloudRegistryPermissions{}
+	result := make([]registry.CloudRegistryPermissions, 0)
 	for _,v := range data{
 		gdata := make([]string,0)
 		for _, g := range strings.Split(v.GroupsName, ","){

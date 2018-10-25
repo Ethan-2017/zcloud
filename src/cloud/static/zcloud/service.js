@@ -29,9 +29,18 @@ function deleteService(id, force) {
  * @param id
  */
 function setServiceDeleteId(id, force) {
-    $("#delete_service_id").val(id)
-    $("#delete_service_force_id").val(id)
+    $("#delete_service_id").val(id);
+    $("#delete_service_force_id").val(id);
     deleteServiceSwal();
+}
+
+/**
+ * 2018-10-08 20:11
+ * 跳到日志查看页面
+ */
+function toLog(env, service, cluster) {
+    var url = "/log/index?env="+env+"&app="+service+"&cluster="+cluster;
+    window.open(url, "_black");
 }
 
 /**
@@ -115,7 +124,6 @@ function getStorageData() {
     var count = 0;
     var d = {}
     $('.storagediv').each(function () {
-        console.log($(this).html())
         if (count == 0) {
             d["ContainerPath"] = $(this).html();
         }
@@ -129,7 +137,7 @@ function getStorageData() {
         }
         if (count == 2) {
             d["HostPath"] = $(this).html();
-            storage.push(d)
+            storage.push(d);
             d = {}
             count = 0;
         } else {
@@ -220,66 +228,6 @@ function saveService(serviceId) {
     }
 }
 
-// /**
-//  * 删除模板弹出框
-//  */
-// function deleteServiceSwal() {
-//     !function ($) {
-//         "use strict";
-//
-//         var SweetAlert = function () {
-//         };
-//         //examples
-//         SweetAlert.prototype.init = function () {
-//             // //Parameter
-//             // $('.delete-template').click(function () {
-//             swal({
-//                 title: '删除该应用',
-//                 text: "",
-//                 type: 'warning',
-//                 showCancelButton: true,
-//                 confirmButtonText: '确认删除',
-//                 cancelButtonText: '不删除',
-//                 confirmButtonClass: 'btn btn-success',
-//                 cancelButtonClass: 'btn btn-danger m-l-10',
-//                 buttonsStyling: false
-//             }).then(function () {
-//                 var forceId = $("#delete_service_force_id").val();
-//                 var result = deleteService($("#delete_service_id").val(), forceId);
-//                 if (result.indexOf("删除成功") != -1) {
-//                     swal(
-//                         '删除成功!',
-//                         result,
-//                         'success'
-//                     );
-//                     setTimeout(function () {
-//                         loadServiceData()
-//                     }, 2000);
-//                 } else {
-//                     swal(
-//                         '删除失败!',
-//                         result,
-//                         'error'
-//                     );
-//                 }
-//
-//             }, function (dismiss) {
-//                 // dismiss can be 'cancel', 'overlay',
-//                 // 'close', and 'timer'
-//                 $("#delete_service_id").val("")
-//                 $("#delete_service_force_id").val("")
-//             })
-//             // });
-//         },
-//             $.SweetAlert = new SweetAlert, $.SweetAlert.Constructor = SweetAlert
-//     }(window.jQuery),
-//
-// //initializing
-//         function ($) {
-//             "use strict";
-//             $.SweetAlert.init()
-//         }(window.jQuery);
-// }
 
 /**
  *
@@ -400,7 +348,7 @@ function setUpdateMode(t) {
 function addStorage() {
     var url = "/application/service/storage/add";
     var result = get({ClusterName:$("#select-cluster-id").val()}, url);
-    $("#add_health_html").html("")
+    $("#add_health_html").html("");
     $("#add_storage_html").html(result);
     $("#add_post_html").modal("toggle");
 }
@@ -424,7 +372,7 @@ function addPort() {
     if (!checkSignValue()) {
         return
     }
-    var id = getCheckInput("all")
+    var id = getCheckInput("all");
     var url = "/application/service/port/add/" + parseInt(id);
     var result = get({}, url);
     $("#add_scale_html").html(result);
@@ -439,7 +387,7 @@ function addScale() {
     if (!checkSignValue()) {
         return
     }
-    var id = getCheckInput("all")
+    var id = getCheckInput("all");
     var url = "/application/service/scale/add/" + parseInt(id);
     var result = get({}, url);
     $("#add_scale_html").html(result);
@@ -455,10 +403,25 @@ function changeHealth() {
     if (!checkSignValue()) {
         return
     }
-    var id = getCheckInput("all")
+    var id = getCheckInput("all");
     var url = "/application/service/health/add/" + parseInt(id);
     var result = get({}, url);
     $("#add_scale_html").html(result);
+    $("#add_post_html").modal("toggle");
+}
+
+/**
+ * 修改日志路径
+ * 2018-10-11 09:21
+ */
+function changeLogPath() {
+    if (!checkSignValue()) {
+        return
+    }
+    var id = getCheckInput("all");
+    var url = "/application/service/log/add/" + parseInt(id);
+    var result = get({}, url);
+    $("#add_log_html").html(result);
     $("#add_post_html").modal("toggle");
 }
 
@@ -470,7 +433,7 @@ function addCpuMemory() {
     if (!checkSignValue()) {
         return
     }
-    var id = getCheckInput("all")
+    var id = getCheckInput("all");
     var url = "/application/service/config/add/" + parseInt(id);
     var result = get({}, url);
     $("#add_scale_html").html(result);
@@ -974,8 +937,8 @@ function serviceCpuSave() {
     var cpu = $("input[name='Cpu']").val();
     var mem = $("input[name='Memory']").val();
     var id = $("#scale_service_id").val();
-    var url = "/api/service/update/" + id
-    var result = post({cpu: cpu, mem: mem, type: "config"}, url)
+    var url = "/api/service/update/" + id;
+    var result = post({cpu: cpu, mem: mem, type: "config"}, url);
     saveMsg(result);
 }
 
@@ -988,16 +951,18 @@ function updateServiceImage() {
     var version = $("#update_image_version_id").val();
     var interval = $("#update_interval_id").val();
     if (!version) {
-        setInputError($("#update_image_version_id"), "errmsg")
+        setInputError($("#update_image_version_id"), "errmsg");
         return
     }
     if (!interval) {
-        setInputError($("#update_interval_id"), "errmsg")
+        setInputError($("#update_interval_id"), "errmsg");
         return
     }
-    var url = "/api/service/update/" + id
-    var result = post({version: version, type: "image", MinReady: interval}, url)
+    var url = "/api/service/update/" + id;
+    var result = post({version: version, type: "image", MinReady: interval}, url);
     saveMsg(result);
+    $("#add_post_html").modal("toggle");
+    loadServiceData();
 }
 
 /**
@@ -1013,18 +978,31 @@ function envSave() {
 }
 
 /**
+ * 日志路径修改
+ * 2018-01-14 11:26
+ */
+function logPathSave() {
+    var logPath = $("#LogPath").val();
+    var id = $("#update_service_env_id").val();
+    var url = "/api/service/update/" + id;
+    var result = post({logPath: logPath, type: "log"}, url);
+    saveMsg(result);
+}
+
+/**
  * 保存健康检查数据
  * 2018-01-14 12:02
  */
 function saveHealth() {
-    var d = {}
+    var d = {};
     d["HealthType"] = $("input[name='HealthType']").val();
     d["HealthPort"] = $("input[name='HealthPort']").val();
     d["HealthCmd"] = $("input[name='HealthCmd']").val();
+    d["HealthInitialDelay"] = $("input[name='HealthInitialDelay']").val();
     d["HealthPath"] = $("input[name='HealthPath']").val();
-    d["HealthInterval"] = $("input[name='HealthInterval']").val();
-    d["HealthFailureThreshold"] = $("input[name='HealthFailureThreshold']").val();
-    d["HealthTimeout"] = $("input[name='HealthTimeout']").val();
+    d["HealthInterval"] = $("input[name='HealthInterval']").prop("value");
+    d["HealthFailureThreshold"] = $("input[name='HealthFailureThreshold']").prop("value");
+    d["HealthTimeout"] = $("input[name='HealthTimeout']").prop("value");
     if (!checkHealthData(d["HealthType"], d["HealthPort"], d["HealthCmd"], d["HealthPath"])) {
         return
     }
@@ -1099,8 +1077,21 @@ function deleteContainer(id) {
     }
 }
 
+/**
+ * 跳转到容器页面
+ * @param id
+ */
+function toContainer(serviceId) {
+    var url = "/application/container/list?serviceId="+serviceId;
+    console.log(url)
+    window.location.href = url;
+}
+
 
 function loadServiceData(key,name) {
+    if(!key){
+        key = $("#search-service-name-id").val();
+    }
     if (!key) {
         key = ""
     } else {
@@ -1113,6 +1104,11 @@ function loadServiceData(key,name) {
     var app = $("#detail_add_app_name").val();
     if (!app) {
         app = ""
+    }
+    // 应用详情页面使用 2018-01-18 08:02
+    var cluster = $("#detail_add_cluster_name").val();
+    if (!cluster) {
+        cluster = ""
     }
 
     $("#service-data-table").dataTable({
@@ -1128,7 +1124,7 @@ function loadServiceData(key,name) {
         "scrollX": true, // 是否允许左右滑动
         "displayLength": 10, // 默认长度
         "ajax": { // 请求地址
-            "url": "/api/service?t=" + new Date().getTime() + "&key=" + key + "&AppName=" + app +"&ServiceName="+name,
+            "url": "/api/service?t=" + new Date().getTime() + "&key=" + key + "&AppName=" + app +"&ServiceName="+name + "&ClusterName="+cluster,
             "type": 'get'
         },
         "columns": [ // 数据映射
@@ -1144,9 +1140,9 @@ function loadServiceData(key,name) {
             }
             },
             {
-                "data": "ServiceName", "sWidth": "8%", "mRender": function (data, type, full) {
-                return "<a href='javascript:void(0)' onclick='toServiceDetail(\"" + data + "\")'>" + data + "<br></a><span class='text-default'>应用:&nbsp;" + full["AppName"] + "</span>";
-            }
+                "data": "ServiceName", "sWidth": "10%", "mRender": function (data, type, full) {
+                    return "<a href='javascript:void(0)' onclick='toContainer(" + full["ServiceId"] + ")'>" + data + "<br></a><span class='text-default'>应用:&nbsp;" + full["AppName"] + "</span><br><span class='text-default'>环境:&nbsp;" + full["Entname"] + "</span>";
+                }
             },
             {
                 "data": "Status", "sWidth": "8%", "mRender": function (data, type, full) {
@@ -1173,36 +1169,44 @@ function loadServiceData(key,name) {
             }
             },
             {
-                "data": "Image", "sWidth": "12%", "mRender": function (data) {
+                "data": "Image", "sWidth": "11%", "mRender": function (data) {
                 return "<div style='word-wrap:break-word'><a>" + data + "</a></div>";
             }
-            },
-            {
-                "data": "ResourceName", "sWidth": "13%", "mRender": function (data, type, full) {
+            }, {
+                "data": "ResourceName", "sWidth": "11%", "mRender": function (data, type, full) {
                 return "<a href='/base/quota/detail/" + data + "'>" + data + "</a><br>集群名称:&nbsp;" + full["ClusterName"]
             }
             },
             {"data": "CreateTime", "sWidth": "7%"},
             {
-                "data": "Access", "sWidth": "16%", "mRender": function (data) {
+                "data": "Access", "sWidth": "16%", "mRender": function (data,type, full) {
+
                 if (data) {
-                    return data.join("<br>")
+                    data = data.join("<br>")
                 }
+                    if(full["Domain"]){
+                        data += "<br>域名访问: <a target='_blank' href='http://" + full["Domain"] +"'/>"+full["Domain"]+"</a><br>"
+                    }
+                   if(data){
+                    return data;
+                   }
                 return "<span class='Fail'>未知</span>"
 
             }
             },
             {
-                "data": "ServiceId", "sWidth": "5%", "mRender": function (data) {
-                return '<button type="button"  title="强制删除" onClick="deleteServiceSwal(' + data + ',1)" class="delete-groups btn btn-xs rb-btn-oper"><i class="fa fa-bolt"></i></button>';
-            }
+                "data": "ServiceId", "sWidth": "6%", "mRender": function (data,type,full) {
+                return '<button type="button"  title="强制删除" onClick="deleteServiceSwal(' + data + ',1)" class="delete-groups btn btn-xs rb-btn-oper"><i class="fa fa-bolt"></i></button>'+
+                    '<button type="button"  title="显示日志" onClick="toLog(\'' + full["Entname"]+ '\',\''+full["ServiceName"]+'\',\''+full["ClusterName"]+'\')" class="delete-groups btn btn-xs rb-btn-oper m-l-5"><i class="fa fa-history"></i></button>' ;
+
+                }
             },
         ],
         "fnRowCallback": function (row, data) { // 每行创建完毕的回调
             $(row).data('recordId', data.recordId);
         }
     });
-    $("#app-data-table_wrapper").css("cssText", "margin-top:-20px !important;");
+    // $("#app-data-table_wrapper").css("cssText", "margin-top:-20px !important;");
 
 }
 

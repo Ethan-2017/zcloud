@@ -48,7 +48,7 @@ func (this *EntController) EntAdd() {
 // router /api/ent [get]
 func (this *EntController) EntData() {
 	// 环境数据
-	data := []ent.CloudEnt{}
+	data := make([]ent.CloudEnt, 0)
 	q := sql.SearchSql(ent.CloudEnt{}, ent.SelectCloudEnt, sql.SearchMap{})
 	sql.Raw(q).QueryRows(&data)
 	setEntJson(this, data)
@@ -87,23 +87,31 @@ func (this *EntController) EntSave() {
 	setEntJson(this, data)
 }
 
-// 获取select选项
-// 2018-02-06 15:32
-func GetEntnameSelect() string {
+func GetEntnameSelectData(isLog bool)  string {
 	html := make([]string, 0)
 	html = append(html, "<option>--请选择--</option>")
 	data := getEntdata()
 	for _, v := range data {
-		html = append(html, util.GetSelectOption(v.Entname, v.Entname, v.Entname))
+		e := util.GetSelectOptionName(v.Entname)
+		if isLog {
+			e =  util.GetSelectOptionName(v.Description)
+		}
+		html = append(html, e)
 	}
 	return strings.Join(html, "\n")
+}
+
+// 获取select选项
+// 2018-02-06 15:32
+func GetEntnameSelect() string {
+	return GetEntnameSelectData(false)
 }
 
 // 2018-02-06 15:30
 // 获取环境信息
 func getEntdata() []ent.CloudEnt {
 	// 环境数据
-	data := []ent.CloudEnt{}
+	data := make([]ent.CloudEnt, 0)
 	q := sql.SearchSql(ent.CloudEnt{}, ent.SelectCloudEnt, sql.SearchMap{})
 	sql.Raw(q).QueryRows(&data)
 	return data
@@ -119,7 +127,7 @@ func (this *EntController) EntDataName() {
 // 环境数据
 // @router /api/ent [get]
 func (this *EntController) EntDatas() {
-	data := []ent.CloudEnt{}
+	data := make([]ent.CloudEnt, 0)
 	searchMap := sql.SearchMap{}
 	id := this.Ctx.Input.Param(":id")
 	key := this.GetString("search")

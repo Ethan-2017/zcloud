@@ -131,12 +131,13 @@ func VerifyUser(user string, pass string, service string) bool {
 	if redisr == cacheStr {
 		return true
 	}
-	d := []registry.CloudRegistryServer{}
+	d := make([]registry.CloudRegistryServer, 0)
 	pass = util.Base64Encoding(pass)
 	searchMap := sql.GetSearchMapV("Admin", user, "Password", pass, "Name", services[0], "ClusterName", services[1])
 	q := sql.SearchSql(registry.CloudRegistryServer{}, registry.SelectCloudRegistryServer, searchMap)
 	sql.Raw(q).QueryRows(&d)
 	if len(d) < 1 {
+		cache.RedisUserCache.Delete(key)
 		return false
 	}
 	cache.RedisUserCache.Put(key, cacheStr, time.Minute*20)
@@ -165,6 +166,7 @@ func RecordLoginUser(username string, password string) (bool, error) {
 		v.Pwd = util.Md5String(password)
 		v.UserName = username
 		v.LastModifyTime = util.GetDate()
+		v.Token = util.Md5String(username + util.GetDate())
 		searchMap := sql.GetSearchMapV("UserName", username)
 		user := index.DockerCloudAuthorityUser{}
 		q := sql.SearchSql(v, index.SelectDockerCloudAuthorityUser, searchMap)
@@ -174,7 +176,7 @@ func RecordLoginUser(username string, password string) (bool, error) {
 			sql.Raw(q).Exec()
 		} else {
 			if ! writeLock(username) {
-				q = sql.UpdateSql(v, index.UpdateDockerCloudAuthorityUser, searchMap, "")
+				q = sql.UpdateSql(v, index.UpdateDockerCloudAuthorityUser, searchMap, "Token")
 				sql.Raw(q).Exec()
 			}
 		}
@@ -186,7 +188,7 @@ func RecordLoginUser(username string, password string) (bool, error) {
 // 获取用户是否禁用
 // 2018-01-22 09:18
 func getUserIsDel(username string) bool {
-	data := []index.DockerCloudAuthorityUser{}
+	data := make([]index.DockerCloudAuthorityUser, 0)
 	searchMap := sql.SearchMap{}
 	searchMap.Put("IsDel", 1)
 	searchMap.Put("UserName", username)
@@ -238,10 +240,16 @@ func (this *IndexController) Login() {
 	}
 }
 
-// @router /index [get]
+// 快捷入口页面
+// @router /shortcut [get]
 func (this *IndexController) Index() {
 	// 获取全部集群数据
-	//this.Data["data"] = cluster.GetClusterData("")
+	this.TplName = "index/shortcut.html"
+}
+
+// @router /index [get]
+func (this *IndexController) Shortcut() {
+	// 获取全部集群数据
 	this.TplName = "index/index.html"
 }
 

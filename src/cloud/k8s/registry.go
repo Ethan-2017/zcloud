@@ -12,6 +12,8 @@ import (
 	"crypto/tls"
 	"github.com/heroku/docker-registry-client/registry"
 	"fmt"
+	"time"
+	"sync"
 )
 
 var (
@@ -61,14 +63,17 @@ func getParam(registryParam RegistryParam) ServiceParam {
 	param.Cpu = 1
 	param.ClusterName = registryParam.ClusterName
 	param.PortData = "5000"
-	param.Replicas = 1
+	if registryParam.Replicas == 0 {
+		registryParam.Replicas = 1
+	}
+	param.Replicas = registryParam.Replicas
 	param.Namespace = util.Namespace("registryv2", "registryv2")
 	param.Memory = "2048"
 	param.Port = "5000"
 	param.Image = "registry:2"
 	param.MinReady = 1
 	param.HealthData = ""
-	//param.StorageData = `[{"ContainerPath":"/etc/localtime","Volume":"","HostPath":"/etc/localtime"}]`
+	param.StorageData = `[{"ContainerPath":"/var/lib/registry/","Volume":"","HostPath":"`+ registryParam.HostPath  +`"}]`
 	param.Command = `["sh","/start/start-cmd"]`
 	// deployment
 	c1, _ := GetYamlClient(registryParam.ClusterName, "apps", "v1beta1", "/apis")
@@ -76,16 +81,17 @@ func getParam(registryParam RegistryParam) ServiceParam {
 	cl2, _ := GetYamlClient(registryParam.ClusterName, "", "v1", "api")
 	cl3, _ := GetClient(registryParam.ClusterName)
 	param.Cl3 = cl3
+	param.SessionAffinity = "ClientIP"
 	param.Cl2 = cl2
 	param.C1 = c1
 	param.Envs = "TZ=Asia/Shanghai"
 
 	config := `[{"ContainerPath":"/certs","DataName":"registry-auth","DataId":"auth-crt,registry-crt,registry-key"},{"ContainerPath":"/start","DataName":"registry-auth","DataId":"start-cmd"},{"ContainerPath":"/etc/docker/registry","DataName":"registry-config","DataId":"config-yml"}]`
 	// 生产configmap信息
-	configdata := []ConfigureData{}
+	configdata := make([]ConfigureData, 0)
 	err := json.Unmarshal([]byte(config), &configdata)
 	logs.Info(err)
-	configureData := []ConfigureData{}
+	configureData := make([]ConfigureData, 0)
 
 	// 读取配置文件里的证书信息
 	pwd, _ := os.Getwd()
@@ -112,6 +118,46 @@ func getParam(registryParam RegistryParam) ServiceParam {
 	return param
 }
 
+
+type RegistryLock struct {
+	Lock sync.RWMutex
+	Data map[string]*registry.Registry
+}
+
+// 获取数据
+func (m *RegistryLock) Get(key string) (*registry.Registry, bool) {
+	m.Lock.RLock()
+	defer m.Lock.RUnlock()
+	data := m.Data
+	if _, ok := data[key]; ok {
+		return data[key], true
+	}
+	return nil, false
+}
+
+// 删除
+func (m *RegistryLock) Delete(key string)  {
+	m.Lock.RLock()
+	defer m.Lock.RUnlock()
+	data := m.Data
+	if _, ok := data[key]; ok {
+		 data[key] = nil
+	}
+}
+
+// 添加数据
+func (m *RegistryLock) Put(k string, v *registry.Registry) {
+	if len(m.Data) < 1 {
+		m.Data = nil
+	}
+	m.Lock.Lock()
+	if m.Data == nil {
+		m.Data = make(map[string]*registry.Registry)
+	}
+	m.Data[k] = v
+	defer m.Lock.Unlock()
+}
+
 // 2018-01-20 20:56
 // 创建镜像仓库
 func CreateRegistry(param RegistryParam) (error) {
@@ -121,6 +167,7 @@ func CreateRegistry(param RegistryParam) (error) {
 	}
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		DisableKeepAlives: true,
 	}
 	client := &http.Client{Transport: tr}
 	r, err := client.Get(param.AuthServer)
@@ -134,23 +181,45 @@ func CreateRegistry(param RegistryParam) (error) {
 	return err
 }
 
+
+var HubLockCache = RegistryLock{}
 // 2018-01-28 13:36
 // 获取访问连接
 func getHubClient(host string, username string, password string) *registry.Registry {
-	url := "https://" + host + "/"
-	hub, err := registry.New(url, username, password)
-	if err != nil {
-		logs.Error("获取仓库连接失败", url, err, username)
-		return nil
+	var url = "https://" + host + "/"
+	var hub registry.Registry
+    var hub2 , ok = HubLockCache.Get(host)
+	if !ok {
+		hub3, err := registry.New(url, username, password)
+		if err != nil {
+			logs.Error("获取仓库连接失败", err.Error())
+			return nil
+		}
+		hub = *hub3
+		HubLockCache.Put(host, &hub)
+	}else{
+		if hub2 == nil{
+			hub3, err := registry.New(url, username, password)
+			if err == nil {
+				hub = *hub3
+				HubLockCache.Put(host, hub3)
+			}
+		}else{
+			hub = *hub2
+		}
+		logs.Info("从缓存获取仓库连接成功...")
 	}
-	return hub
+	hub.Client.Timeout = 20 * time.Second
+	return &hub
 }
 
 // 2018-01-27 21:06
 // 获取仓库中不同组的镜像数量和tag数量
 func GetRegistryInfo(host string, username string, password string, registryName string) (util.Lock, util.Lock, util.Lock) {
 	hub := getHubClient(host, username, password)
+
 	if hub == nil {
+		HubLockCache.Delete(host)
 		return util.Lock{}, util.Lock{}, util.Lock{}
 	}
 	repositories, err := hub.Repositories()
@@ -193,6 +262,8 @@ func GetRegistryInfo(host string, username string, password string, registryName
 				for _, mani := range m.Layers {
 					size += mani.Size
 				}
+			}else{
+				continue
 			}
 			img.Repositories = registryName
 			img.LayersNumber = len(m.Layers)
@@ -206,12 +277,12 @@ func GetRegistryInfo(host string, username string, password string, registryName
 
 // 2018-01-29 08:44
 // 删除镜像
-func deleteImage(hub *registry.Registry, imagename string, tag string) (bool, error) {
-	digest, err := hub.ManifestDigest(imagename, tag)
+func deleteImage(hub *registry.Registry, imageName string, tag string) (bool, error) {
+	digest, err := hub.ManifestDigest(imageName, tag)
 	if err != nil {
 		return false, err
 	}
-	err = hub.DeleteManifest(imagename, digest)
+	err = hub.DeleteManifest(imageName, digest)
 	if err != nil {
 		return false, err
 	}
@@ -220,26 +291,27 @@ func deleteImage(hub *registry.Registry, imagename string, tag string) (bool, er
 
 // 2018-01-29 8:27
 // 删除镜像
-func DeleteRegistryImage(host string, username string, password string, imagename string, tag string) (bool, error) {
+func DeleteRegistryImage(host string, username string, password string, imageName string, tag string) (bool, error) {
 	hub := getHubClient(host, username, password)
 	if hub == nil {
+		HubLockCache.Delete(host)
 		return false, errors.UnsupportedError("连接registry server失败")
 	}
 	var r bool
 	var err error
 	if tag != "" {
-		r, err = deleteImage(hub, imagename, tag)
+		r, err = deleteImage(hub, imageName, tag)
 	} else {
-		tags, err := hub.Tags(imagename)
+		tags, err := hub.Tags(imageName)
 		if err != nil {
 			return false, err
 		}
 		for _, tag := range tags {
-			r, err = deleteImage(hub, imagename, tag)
+			r, err = deleteImage(hub, imageName, tag)
 			if err != nil {
 				return false, err
 			}
-			logs.Info("删除镜像", imagename, tag)
+			logs.Info("删除镜像", imageName, tag)
 		}
 	}
 	return r, err
@@ -247,15 +319,17 @@ func DeleteRegistryImage(host string, username string, password string, imagenam
 
 // 2018-02-09 17:01
 // 检查镜像是否存在
-func CheckImageExists(host string, username string, password string, imagename string, tag string) (bool) {
+func CheckImageExists(host string, username string, password string, imageName string, tag string) (bool) {
 	hub := getHubClient(host, username, password)
 	if hub == nil {
+		HubLockCache.Delete(host)
 		logs.Error("连接失败")
 		return false
 	}
-	_, err := hub.ManifestDigest(imagename, tag)
+	_, err := hub.ManifestDigest(imageName, tag)
 	if err != nil {
 		return false
 	}
 	return true
 }
+

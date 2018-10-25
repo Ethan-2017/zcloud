@@ -19,6 +19,24 @@ function selectImageGroup(registryName, target) {
     $("#" + id).selectpicker('refresh');
 }
 
+/**
+ * 2018-08-23 09:41
+ * 获取环境名称
+ * @param change
+ */
+function setEntname() {
+    var url = "/api/ent/name";
+    var result = get({}, url);
+    var html = "<option>--请选择--</option>";
+    for (var i = 0; i < result.length; i++) {
+        var t = result[i]["Entname"];
+        if (html.indexOf("'" + t) == -1 ) {
+            html += "<option value='" + t + "'>" + t + "</option>";
+        }
+    }
+    $("#select-entname-id").html(html);
+    $('.selectpicker').selectpicker('refresh');
+}
 
 /**
  * 2018-01-27 18:18
@@ -51,9 +69,12 @@ function getEntClusterData(entname, target) {
     var data = result["data"];
     var html = "<option>--请选择--</option>";
     for (var i = 0; i < data.length; i++) {
-        if (data[i]["Entname"] == entname) {
+        if (data[i]["Entname"] == entname || data[i]["Description"] == entname) {
             var clusters = data[i]["Clusters"];
             var clusters = clusters.split(",");
+            if (clusters.length == 1){
+                html = "";
+            }
 
             for (var j = 0; j < clusters.length; j++) {
                 html += "<option value='" + clusters[j] + "'>" + clusters[j] + "</option>"
@@ -148,6 +169,28 @@ function getResouceData(clustername, id, url, name, appname) {
     for (var i = 0; i <= data.length; i++) {
         if (data[i]) {
             html += "<option value='" + data[i][name] + "'>" + data[i][name] + "</option>";
+        }
+    }
+    if(html.indexOf("请选择") == -1 ){
+        html = "<option value=''>--请选择--</option>" + html;
+    }
+    $("#" + id).html(html);
+    $('.selectpicker').selectpicker('refresh');
+}
+
+
+/**
+ * 2018-02-03 21:02
+ * 选择应用
+ * @param clustername
+ */
+function getServiceIdSelect(clustername, id, url, name, appname) {
+    appname = getValue(appname);
+    var data = get({ClusterName: clustername, AppName: appname}, url);
+    var html = "";
+    for (var i = 0; i <= data.length; i++) {
+        if (data[i]) {
+            html += "<option value='" + data[i]["ServiceId"] + "'>" + data[i][name] + "</option>";
         }
     }
     $("#" + id).html(html);

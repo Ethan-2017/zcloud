@@ -100,10 +100,8 @@ func (this *ServiceController) ServiceSave() {
 
 	serviceData := app.GetUserLbService(user, d.ClusterName, d.LbServiceId)
 	if len(serviceData) > 0 {
-		d.ServiceName = serviceData[0].ServiceName
-		d.AppName = serviceData[0].AppName
-		d.ClusterName = serviceData[0].ClusterName
-		d.ResourceName = serviceData[0].ResourceName
+		service := serviceData[0]
+		d.ServiceName,d.AppName, d.ClusterName, d.ResourceName = service.ServiceName, service.AppName,service.ClusterName,service.ResourceName
 	}
 
 	q := sql.InsertSql(d, lb.InsertCloudLbService)
@@ -120,6 +118,7 @@ func (this *ServiceController) ServiceSave() {
 		*this.Ctx, "保存负载均衡服务配置 "+msg, 
 		d.LbName)
 	setServiceJson(this, data)
+	app.UpdateServiceDomain()
 	go k8s.CreateNginxConf("")
 	go k8s.CreateNginxConf("-test")
 }
@@ -127,7 +126,7 @@ func (this *ServiceController) ServiceSave() {
 // 负载均衡数据
 // @router /api/lb/service/:hi(.*) [get]
 func (this *ServiceController) ServiceData() {
-	data := []k8s.CloudLbService{}
+	data := make([]k8s.CloudLbService, 0)
 	searchMap := sql.SearchMap{}
 	lbName := this.GetString("LbName")
 	if lbName == "" {
@@ -140,8 +139,8 @@ func (this *ServiceController) ServiceData() {
 		return
 	}
 
-	user := getServiceUser(this)
-	searchMap.Put("CreateUser", user)
+	//user := getServiceUser(this)
+	//searchMap.Put("CreateUser", user)
 	if domain != "" {
 		searchMap.Put("Domain", domain)
 	}
@@ -158,7 +157,7 @@ func (this *ServiceController) ServiceData() {
 
 	sql.Raw(searchSql).QueryRows(&data)
 	r := util.ResponseMap(data,
-		sql.CountSearchMap("cloud_lb_service", sql.GetSearchMapV("CreateUser", user), len(data), key),
+		sql.CountSearchMap("cloud_lb_service", sql.SearchMap{}, len(data), key),
 		this.GetString("draw"))
 	setServiceJson(this, r)
 }
@@ -205,6 +204,7 @@ func getNginxConf(this *ServiceController) k8s.CloudLbNginxConf {
 	sql.Raw(q).QueryRow(&conf)
 	return conf
 }
+
 
 // 2018-02-01 21:39
 // 获取nginx配置文件信息
@@ -264,17 +264,17 @@ func (this *ServiceController) SaveNginxConf() {
 	logs.Info("获取到检查配置", util.ObjToString(configData))
 	k8s.MakeTestNginxConfMap(configData, sslDbData, conf.ClusterName)
 
-	logstr, logtime := k8s.MakeTestJob(master, port)
-	if ! strings.Contains(logstr, "test is successful") {
-		data, _ := util.SaveResponse(errors.InvalidArgumentError("配置检查失败"), logstr)
+	logStr, logTime := k8s.MakeTestJob(master, port, conf.ClusterName)
+	if ! strings.Contains(logStr, "test is successful") {
+		data, _ := util.SaveResponse(errors.InvalidArgumentError("配置检查失败"), logStr)
 		setServiceJson(this, data)
-		logs.Error("检查nginx配置失败", user, logstr, logtime)
+		logs.Error("检查nginx配置失败", user, logStr, logTime)
 		return
 	}
 
 	q := `update cloud_lb_nginx_conf set vhost="` + sql.Replace(vhost) + `" where create_user="` + user + `" and service_id=` + this.Ctx.Input.Param(":id")
 	sql.Raw(q).Exec()
-	r, _ := util.SaveResponse(nil, "保存成功")
+	r := util.ApiResponse(true, "保存成功 " + logStr)
 	setServiceJson(this, r)
 	go k8s.CreateNginxConf("")
 }
@@ -284,7 +284,7 @@ func (this *ServiceController) SaveNginxConf() {
 // 2018-02-14 14:40
 // 获取域名选项卡
 func GetDomainSelect(entname string) string {
-	data := []lb.LbServiceVersion{}
+	data := make([]lb.LbServiceVersion, 0)
 
 	q := sql.SearchSql(
 		lb.LbServiceVersion{},
@@ -311,7 +311,7 @@ func GetLbDomainData(domain string) k8s.CloudLbService {
 // 2018-02-17 21:17
 // 获取指定域名的服务
 func GetLbServiceData(domains []string) []lb.LbServiceVersion {
-	data := []lb.LbServiceVersion{}
+	data := make([]lb.LbServiceVersion, 0)
 	q := sql.SearchSql(
 		lb.LbServiceVersion{},
 		lb.SelectLbServiceVersion,

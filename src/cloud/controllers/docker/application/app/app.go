@@ -14,6 +14,7 @@ import (
 	"cloud/controllers/ent"
 	"cloud/controllers/base/quota"
 	"strconv"
+	"cloud/userperm"
 )
 
 type AppController struct {
@@ -83,7 +84,7 @@ func (this *AppController) AppScale() {
 		responseAppData(nil, this, d.AppName, "操作成功")
 		return
 	}
-	responseAppData(nil, this, d.AppName, "操作成操作失败")
+	responseAppData(nil, this, d.AppName, "操作失败")
 }
 
 // 2018-02-03 19:03
@@ -91,74 +92,51 @@ func (this *AppController) AppScale() {
 // @param ClusterName
 // @router /api/app/name [get]
 func (this *AppController) GetAppName() {
-	data := []app.CloudAppName{}
+	datas := make([]app.CloudAppName, 0)
+	result := make([]app.CloudAppName, 0)
 	searchMap := sql.SearchMap{}
 	q := strings.Split("Entname,ClusterName", ",")
 	searchMap = sql.GetSearchMapValue(q, *this.Ctx, searchMap)
-	searchMap.Put("CreateUser", getUser(this))
 	searchSql := sql.SearchSql(app.CloudAppService{}, app.SelectCloudApp, searchMap)
-	sql.Raw(searchSql).QueryRows(&data)
-	SetAppDataJson(this, data)
+	sql.Raw(searchSql).QueryRows(&datas)
+	permApp := userperm.GetResourceName("应用", getUser(this))
+	// 不是自己创建的才检查
+	user :=  getUser(this)
+	for _, data := range datas {
+		if data.CreateUser != getUser(this) &&  user != "admin"{
+			if ! userperm.CheckPerm(data.AppName, "", "", permApp) {
+				continue
+			}
+		}
+		result = append(result, data)
+	}
+	SetAppDataJson(this, result)
 }
 
-// 2018-02-13 15:46
-// 获取应用选择项
-func GetAppSelect(searchMap sql.SearchMap) string {
-	data := getAppDataQ(searchMap)
-	var opt = "<option>--请选择--</option>"
-	for _, v := range data {
-		opt += util.GetSelectOptionName(v.AppName)
-	}
-	return opt
-}
+
 
 // 容器列表入口
 // 2018-01-15 14:57
 // @router /application/container/list
 func (this *AppController) ContainerList() {
+	serviceId, err := this.GetInt("serviceId")
 	this.Data["Entname"] = ent.GetEntnameSelect()
 	this.Data["AppData"] = GetAppSelect(sql.GetSearchMapV("CreateUser", getUser(this)))
+	if err == nil {
+		searchMap := sql.SearchMap{}
+		searchMap.Put("ServiceId", serviceId)
+		data := getServiceData(searchMap, app.SelectCloudAppService)
+		if len(data) > 0 {
+			this.Data["Entname"] = util.GetSelectOptionName(data[0].Entname)
+			this.Data["AppData"] = util.GetSelectOptionName(data[0].AppName)
+			this.Data["ServiceName"] = util.GetSelectOptionName(data[0].ServiceName)
+			this.Data["serviceId"] = serviceId
+		}
+	}
 	this.TplName = "application/container/list.html"
 }
 
-// 获取应用名称信息
-func getAppDataQ(searchMap sql.SearchMap) []app.CloudAppName {
-	data := []app.CloudAppName{}
-	searchSql := sql.SearchSql(app.CloudAppName{}, app.GetAppName, searchMap)
-	logs.Info("searchSql", searchSql, searchMap)
-	sql.Raw(searchSql).QueryRows(&data)
-	return data
-}
 
-// 2018-02-03 21:44
-// 获取选项卡
-func GetAppHtml(cluster string, username string) string {
-	data := getAppData("", cluster, username)
-	var html string
-	for _, v := range data {
-		html += util.GetSelectOptionName(v.AppName)
-	}
-	return html
-}
-
-// 2018-02-27 11:45
-// 加载应用数据
-func selectAppData(searchMap sql.SearchMap)[]app.CloudApp  {
-	data := []app.CloudApp{}
-	searchSql := sql.SearchSql(app.CloudAppService{}, app.SelectCloudApp, searchMap)
-	sql.Raw(searchSql).QueryRows(&data)
-	return data
-}
-
-// 查询某个服务的数据
-func getAppData(name string, cluster string, username string) []app.CloudApp {
-
-	searchMap := sql.GetSearchMapV("ClusterName", cluster, "CreateUser", username)
-	if name != "" {
-		searchMap.Put("AppName", name)
-	}
-	return selectAppData(searchMap)
-}
 
 // 应用详情页面
 // @router /application/app/detail/:id:int [get]
@@ -167,9 +145,8 @@ func (this *AppController) AppDetail() {
 	data := app.CloudApp{}
 	searchMap := sql.SearchMap{}
 	searchMap.Put("AppId", id)
-	searchMap.Put("CreateUser", getUser(this))
-	datas := selectAppData(searchMap)
 
+	datas := selectAppData(searchMap)
 	if len(datas) > 0 {
 		data = datas[0]
 	}
@@ -177,6 +154,16 @@ func (this *AppController) AppDetail() {
 		this.TplName = "application/app/list.html"
 		return
 	}
+
+	permApp := userperm.GetResourceName("应用", getUser(this))
+	// 不是自己创建的才检查
+	if data.CreateUser != getUser(this) {
+			if ! userperm.CheckPerm(data.AppName, data.ClusterName, data.Entname, permApp) {
+				this.TplName = "application/app/list.html"
+				return
+			}
+	}
+
 	yamlShow := this.GetString("yaml")
 	this.Data["detault"] = "active"
 	this.Data["yamlActive"] = ""
@@ -239,55 +226,66 @@ func (this *AppController) AppAdd() {
 // 2018-02-26 09:24
 // 重新部署应用
 // @router /api/app/redeploy [post]
-func (this *AppController) redeployApp() {
+func (this *AppController) RedeployApp() {
 	ids := this.GetString("apps")
 	user := getUser(this)
+	perm := userperm.GetResourceName("服务", user)
+	permApp := userperm.GetResourceName("应用", user)
+
 	for _, v:= range strings.Split(ids, ","){
 
 		if _, err := strconv.Atoi(v); err != nil {
 			continue
 		}
-		getRedeployService(v, user)
+
+		services, status := getRedeployService(v, user)
+		if status {
+			for _, service := range services {
+				d := service
+				// 不是自己创建的才检查
+				if d.CreateUser != user {
+					if ! userperm.CheckPerm(d.AppName+";"+d.ResourceName+";"+d.ServiceName, d.ClusterName, d.Entname, perm)  {
+						if ! userperm.CheckPerm(d.AppName, d.ClusterName, d.Entname, permApp) {
+							continue
+						}
+					}
+				}
+				ExecDeploy(service, true)
+			}
+		}
 	}
+	SetAppDataJson(this, util.ApiResponse(true, "成功,重建中..."))
 }
 
-// 2018-02-26 09:32
-// 获取重建的应用信息
-func getRedeployApp(v string, user string) ([]app.CloudAppName,bool) {
-	searchMap := sql.SearchMap{}
-	searchMap.Put("AppId", v)
-	searchMap.Put("CreateUser", user)
-	r := getAppDataQ(searchMap)
-	if len(r) == 0 {
-		return []app.CloudAppName{},false
+// 2018-082-9 08:28
+// 判断服务数量,数量大于0不让删应用
+func checkServiceNumber(d app.CloudApp)  int {
+	searchMap := sql.GetSearchMapV(
+		"AppName", d.AppName,
+		"Entname", d.Entname,
+		"ClusterName", d.ClusterName)
+	data := make([]app.CloudAppService, 0)
+	q := sql.SearchSql(app.CloudAppService{}, app.SelectCloudAppService, searchMap)
+	sql.Raw(q).QueryRows(&data)
+	if len(data) > 0 {
+		return len(data)
 	}
-	return r, true
+	return 0
 }
 
-// 2018-02-26 09:54
-// 获取重建应用的服务信息
-func getRedeployService(v string, user string) ([]app.CloudAppService, bool) {
-	data,status := getRedeployApp(v, user)
-	if ! status {
-		return []app.CloudAppService{}, false
-	}
-	searchMap := sql.SearchMap{}
-	searchMap.Put("ClusterName", data[0].ClusterName)
-	searchMap.Put("Entname", data[0].Entname)
-	searchMap.Put("AppName", data[0].AppName)
-	serviceData := getServiceData(searchMap, app.SelectCloudAppService)
-	if len(serviceData) == 0 {
-		return []app.CloudAppService{}, false
-	}
-	return serviceData, true
-}
 
 // 删除应用
 // @router /api/app/:id:int [delete]
 func (this *AppController) AppDelete() {
 	force := this.GetString("force")
 	d, searchMap := getApp(this)
-
+	n := checkServiceNumber(d)
+	if n > 0 {
+		msg := "还有"+strconv.Itoa(n)+"个服务未删除,删除后操作!"
+		SetAppDataJson(this, util.ApiResponse(false, msg))
+		util.SaveOperLog(getUser(this), *this.Ctx, msg, d.ClusterName)
+		return
+	}
 	// 先去服务器删除,成功后再删除数据库
 	namespace := util.Namespace(d.AppName, d.ResourceName)
 
@@ -329,26 +327,39 @@ func (this *AppController) AppDelete() {
 
 // @router /api/app [get]
 func (this *AppController) AppData() {
-	data := []app.CloudApp{}
+	data := make([]app.CloudApp, 0)
 	searchMap := sql.SearchMap{}
-	ip := this.GetString("ip")
+	key := this.GetString("key")
 	searchMap = sql.GetSearchMapValue(
 		sql.MKeyV("AppName"),
 		*this.Ctx, searchMap)
 
-	searchMap.Put("CreateUser", getUser(this))
 	searchSql := sql.SearchSql(app.CloudApp{}, app.SelectCloudApp, searchMap)
-	if ip != "" {
+	searchSql = sql.GetWhere(searchSql, searchMap)
+	if key != "" {
 		q := ` and (app_name like "%?%")`
-		searchSql += strings.Replace(q, "?", sql.Replace(ip), -1)
+		searchSql += strings.Replace(q, "?", sql.Replace(key), -1)
 	}
 
 	sql.OrderByPagingSql(searchSql, "app_id",
 		*this.Ctx.Request, &data,
 		app.CloudApp{})
 
+	user := getUser(this)
+	permApp := userperm.GetResourceName("应用", user)
 	cloudApps := getCacheAppData(data)
-	r := util.ResponseMap(cloudApps, len(data), this.GetString("draw"))
+	result := make([]k8s.CloudApp, 0)
+	for _, d := range cloudApps{
+		// 不是自己创建的才检查
+		if d.CreateUser != user {
+				if ! userperm.CheckPerm(d.AppName, d.ClusterName, d.Entname, permApp) {
+					continue
+				}
+		}
+		result = append(result, d)
+	}
+
+	r := util.ResponseMap(result, len(data), this.GetString("draw"))
 
 	this.Data["json"] = r
 	this.ServeJSON(false)

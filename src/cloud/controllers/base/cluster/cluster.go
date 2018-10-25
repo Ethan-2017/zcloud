@@ -9,6 +9,7 @@ import (
 	"cloud/controllers/base/hosts"
 	"strings"
 	hosts2 "cloud/models/hosts"
+	"cloud/cache"
 )
 
 type ClusterController struct {
@@ -26,6 +27,13 @@ func (this *ClusterController) List() {
 func (this *ClusterController) Images() {
 	this.Data["hostId"] = this.Ctx.Input.Param(":id")
 	this.TplName = "base/cluster/img.html"
+}
+
+// 节点报表入口页面
+// @router /base/cluster/report/:id:int [get]
+func (this *ClusterController) Report() {
+	this.Data["hostId"] = this.Ctx.Input.Param(":id")
+	this.TplName = "base/cluster/report.html"
 }
 
 
@@ -48,7 +56,7 @@ func (this *ClusterController) Add() {
 }
 
 
-// @router /base/cluster/detail [get]
+// @router /base/cluster/detail/:hi(.*) [get]
 func (this *ClusterController) DetailPage() {
 	name := this.Ctx.Input.Param(":hi")
 	if len(name) < 1 {
@@ -97,7 +105,7 @@ func (this *ClusterController) Save() {
 	h.ClusterName = d.ClusterName
 	i := sql.InsertSql(h, hosts2.InsertCloudClusterHosts)
 	sql.Raw(i).Exec()
-
+	CacheClusterData()
 	data, msg := util.SaveResponse(err, "名称已经被使用")
 	util.SaveOperLog(this.GetSession("username"), *this.Ctx, "保存集群操作 "+msg, d.ClusterName)
 	setClusterJson(this, data)
@@ -131,8 +139,21 @@ func (this *ClusterController) ClusterData() {
 		pkey := sql.Replace(key)
 		searchSql += strings.Replace(cluster.SelectCloudClusterWhere, "?", pkey, -1)
 	}
-	cData := getClusterCacheData()
-	var r = util.ResponseMap(cData, len(cData), 1)
+	data := make([]k8s.ClusterStatus, 0)
+	sql.Raw(searchSql).QueryRows(&data)
+	result := make([]k8s.ClusterStatus, 0)
+	for _, v := range data{
+		r := cache.ClusterCache.Get("data" + v.ClusterName)
+		v1 := k8s.ClusterStatus{}
+		status := util.RedisObj2Obj(r, &v1)
+		if status {
+			result = append(result, v1)
+		}else{
+			result = append(result, v)
+			CacheClusterData()
+		}
+	}
+	var r = util.ResponseMap(result, len(result), 1)
 	setClusterJson(this, r)
 }
 

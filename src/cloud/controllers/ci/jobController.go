@@ -21,6 +21,7 @@ import (
 	"cloud/controllers/docker/application/app"
 	"cloud/controllers/base/quota"
 	"cloud/cache"
+	"cloud/userperm"
 )
 
 // 2018-01-25 17:54
@@ -105,7 +106,7 @@ func (this *JobController) JobAdd() {
 	} else {
 		this.Data["ImageTag2"] = "checked"
 	}
-	dockerfile += util.GetSelectOption("", "", "") + dockerfileData
+	dockerfile += dockerfileData
 	clusterHtml += clusterData
 	this.Data["cluster"] = clusterHtml
 	this.Data["dockerfile"] = dockerfile
@@ -116,8 +117,8 @@ func (this *JobController) JobAdd() {
 
 // 2018-02-03 21:37
 // 获取选项
-func GetSelectHtml(username string, clustername string) string {
-	data := GetJobName(username, clustername, "")
+func GetSelectHtml(username string, clusterName string) string {
+	data := GetJobName(username, clusterName, "")
 	var html string
 	for _, v := range data {
 		html += util.GetSelectOption(v.ItemName, v.ItemName, v.ItemName)
@@ -127,18 +128,26 @@ func GetSelectHtml(username string, clustername string) string {
 
 // 2018-02-03 21:55
 // 获取构建任务信息
-func GetJobName(username string, clustername string, itemname string) []ci.CloudBuildJob {
-	searchMap := sql.GetSearchMapV("CreateUser", username)
-	if clustername != "" {
-		searchMap.Put("ClusterName", clustername)
+func GetJobName(username string, clusterName string, itemName string) []ci.CloudBuildJob {
+	perm := userperm.GetResourceName("构建项目", username)
+	searchMap := sql.SearchMap{}
+	if clusterName != "" {
+		searchMap.Put("ClusterName", clusterName)
 	}
-	if itemname != "" {
-		searchMap.Put("ItemName", itemname)
+	if itemName != "" {
+		searchMap.Put("ItemName", itemName)
 	}
 	// 构建任务数据
 	data := make([]ci.CloudBuildJob, 0)
 	q := sql.SearchSql(ci.CloudBuildJob{}, ci.SelectCloudBuildJob, searchMap)
 	sql.Raw(q).QueryRows(&data)
+	logs.Info("获取到job数据", util.ObjToString(data))
+	// 不是自己创建的才检查
+	if len(data) > 0 && data[0].CreateUser != username {
+		if ! userperm.CheckPerm(data[0].ItemName, "", "", perm)  {
+			return make([]ci.CloudBuildJob, 0)
+		}
+	}
 	return data
 }
 
@@ -161,13 +170,16 @@ func (this *JobController) JobSave() {
 	}
 
 	util.SetPublicData(d, getUser(this), &d)
+	d = updateJobContent(d)
+
 	var q = sql.InsertSql(d, ci.InsertCloudBuildJob)
 	if d.JobId > 0 {
 		searchMap := sql.SearchMap{}
 		searchMap.Put("JobId", d.JobId)
 		searchMap.Put("CreateUser", getUser(this))
 		q = sql.UpdateSql(d, ci.UpdateCloudBuildJob, searchMap, ci.UpdateCloudBuildJobExclude2)
-	}else{
+		cache.JobDataCache.Delete(strconv.FormatInt(d.JobId, 10))
+	} else {
 		status, msg := checkQuota(getUser(this))
 		if !status {
 			data := util.ApiResponse(false, msg)
@@ -185,35 +197,76 @@ func (this *JobController) JobSave() {
 	setJson(this, data)
 }
 
+// 2018-08-09 13:34
+// 删除缓存数据
+func DeleteJobCache(name string) {
+	jobData := make([]ci.CloudBuildJob, 0)
+	searchMap := sql.SearchMap{}
+	searchMap.Put("DockerFile", name)
+	q1 := sql.SearchSql(ci.CloudBuildJob{}, ci.SelectCloudBuildJob, searchMap)
+	sql.Raw(q1).QueryRows(&jobData)
+	for _, v := range jobData {
+		logs.Info("删除job缓存", v.DockerFile)
+		cache.JobDataCache.Delete(strconv.FormatInt(v.JobId, 10))
+	}
+}
+
 // 2018-02-12 09:30
 // 检查镜像仓库配额
 // 检查资源配额是否够用
-func checkQuota(username string) (bool,string) {
-	quotaDatas := quota.GetUserQuotaData(username, "")
-	for _, v := range quotaDatas {
-		if v.JobUsed + 1 > v.JobNumber {
+func checkQuota(username string) (bool, string) {
+	quotaData := quota.GetUserQuotaData(username, "")
+	for _, v := range quotaData {
+		if v.JobUsed+1 > v.JobNumber {
 			return false, "构建任务数量超过配额限制"
 		}
 	}
 	return true, ""
 }
 
+// 更新任务脚本和dockerfile
+func updateJobContent(jobData ci.CloudBuildJob) ci.CloudBuildJob {
+	if jobData.DockerFile != "0" {
+		file := GetDockerfileData(jobData.DockerFile)
+		if len(file) > 0 {
+			jobData.Content = file[0].Content
+			jobData.Script = file[0].Script
+		}
+	}
+	return jobData
+}
 
 // 获取构建任务数据
 // 2018-01-25 17:45
 // router /api/ci/job/name [get]
 func (this *JobController) JobDataName() {
-	clustername := this.GetString("ClusterName")
+	//clusterName := this.GetString("ClusterName")
 	searchMap := sql.SearchMap{}
-	searchMap.Put("CreateUser", getUser(this))
-	if clustername != "" {
-		searchMap.Put("ClusterName", clustername)
-	}
+
+	//if clusterName != "" {
+	//	searchMap.Put("ClusterName", clusterName)
+	//}
+
 	// 构建任务数据
 	data := make([]ci.CloudBuildJob, 0)
 	q := sql.SearchSql(ci.CloudBuildJob{}, ci.SelectCloudBuildJob, searchMap)
 	sql.Raw(q).QueryRows(&data)
-	setJson(this, data)
+	clusterMap := cluster.GetClusterMap()
+	perm := userperm.GetResourceName("构建项目", getUser(this))
+	user := getUser(this)
+	result := make([]ci.CloudBuildJob, 0)
+	for _, d := range data {
+		d.ClusterName = clusterMap.GetVString(d.ClusterName)
+		// 不是自己创建的才检查
+		if d.CreateUser != user && user != "admin" {
+			if ! userperm.CheckPerm(d.ItemName, d.ClusterName, "", perm) && len(user) > 0 {
+				continue
+			}
+		}
+		result = append(result, d)
+	}
+
+	setJson(this, result)
 }
 
 // 设置json数据
@@ -245,7 +298,7 @@ func (this *JobController) JobHistoryDatas() {
 		searchSql += strings.Replace(ci.SelectBuildHistoryWhere, "?", key, -1)
 	}
 
-	num,err := sql.OrderByPagingSql(searchSql,
+	num, err := sql.OrderByPagingSql(searchSql,
 		"create_time",
 		*this.Ctx.Request,
 		&data,
@@ -269,29 +322,37 @@ func (this *JobController) JobDatas() {
 	if id != "" {
 		searchMap.Put("JobId", id)
 	}
-	searchMap.Put("CreateUser", getUser(this))
+	//searchMap.Put("CreateUser", getUser(this))
 	searchSql := sql.SearchSql(ci.CloudBuildJob{}, ci.SelectCloudBuildJob, searchMap)
 
 	if key != "" && id == "" {
 		key = sql.Replace(key)
 		searchSql += strings.Replace(ci.SelectCloudBuildJobWhere, "?", key, -1)
 	}
-	num,err := sql.OrderByPagingSql(searchSql,
+	num, err := sql.OrderByPagingSql(searchSql,
 		"create_time",
 		*this.Ctx.Request,
 		&data,
 		ci.CloudBuildJob{})
 
-	clusterMap := cluster.GetClusterMap()
+	//clusterMap := cluster.GetClusterMap()
 	result := make([]ci.CloudBuildJob, 0)
-	for _, v := range data {
-		v.ClusterName = clusterMap.GetVString(v.ClusterName)
-		result = append(result, v)
+	user := getUser(this)
+	perm := userperm.GetResourceName("构建项目", user)
+	for _, d := range data {
+		//d.ClusterName = clusterMap.GetVString(d.ClusterName)
+		// 不是自己创建的才检查
+		if d.CreateUser != user  && user != "admin" {
+			if ! userperm.CheckPerm(d.ItemName, d.ClusterName, "", perm) && len(user) > 0 {
+				continue
+			}
+		}
+		result = append(result, d)
 	}
 
 	r := util.GetResponseResult(err,
 		this.GetString("draw"),
-		data,
+		result,
 		sql.Count("cloud_build_job", int(num), key))
 	setJson(this, r)
 }
@@ -303,23 +364,28 @@ func getJobData(this *JobController) ci.CloudBuildJob {
 	id := this.Ctx.Input.Param(":id")
 	if cache.JobDataErr == nil {
 		r := cache.JobDataCache.Get(id)
-		if r != nil {
-			rdata, _ := redis.String(r, nil)
-			json.Unmarshal([]byte(rdata), &jobData)
-			if jobData.JobId != 0 {
-				return jobData
-			}
+		s := util.RedisObj2Obj(r, &jobData)
+		if s {
+			logs.Info("从redis获取job数据", id, util.ObjToString(jobData))
+			return jobData
 		}
 	}
+	perm := userperm.GetResourceName("构建项目", getUser(this))
 	searchMap := sql.SearchMap{}
 	searchMap.Put("JobId", id)
-	searchMap.Put("CreateUser", getUser(this))
+	//searchMap.Put("CreateUser", getUser(this))
 	sql.Raw(sql.SearchSql(jobData, ci.SelectCloudBuildJob, searchMap)).QueryRow(&jobData)
+	if jobData.CreateUser != getUser(this) {
+		if ! userperm.CheckPerm(jobData.ItemName, jobData.ClusterName, "", perm)  {
+			return ci.CloudBuildJob{}
+		}
+	}
 	if jobData.JobId > 0 {
 		if cache.JobDataCache != nil {
 			cache.JobDataCache.Put(id, util.ObjToString(jobData), time.Minute*10)
 		}
 	}
+	logs.Info("从数据库获取job数据", util.ObjToString(jobData))
 	return jobData
 }
 
@@ -367,7 +433,6 @@ func (this *JobController) JobLogsPage() {
 	this.TplName = "ci/job/log.html"
 }
 
-
 // 2018-01-26 15:59
 // 获取最近一次日志信息
 func getLastLog(jobId int64) ci.CloudBuildJobHistory {
@@ -375,8 +440,8 @@ func getLastLog(jobId int64) ci.CloudBuildJobHistory {
 	if cache.JobCacheErr == nil {
 		r := cache.JobCache.Get(strconv.FormatInt(jobId, 10))
 		if r != nil {
-			rdata, _ := redis.String(r, nil)
-			json.Unmarshal([]byte(rdata), &history)
+			rData, _ := redis.String(r, nil)
+			json.Unmarshal([]byte(rData), &history)
 			if history.HistoryId != 0 {
 				logs.Info("从redis缓存获取到 cloud_job_history_", history.JobName)
 				return history
@@ -396,9 +461,9 @@ func getLastLog(jobId int64) ci.CloudBuildJobHistory {
 
 // 2018-02-04 15;57
 // 获取历史数据,在流水线时候使用到
-func GetHistoryData(jobname string) ci.CloudBuildJobHistory {
+func GetHistoryData(jobName string) ci.CloudBuildJobHistory {
 	history := ci.CloudBuildJobHistory{}
-	q := sql.SearchSql(history, ci.SelectCloudBuildJobHistory, sql.GetSearchMapV("JobName", jobname))
+	q := sql.SearchSql(history, ci.SelectCloudBuildJobHistory, sql.GetSearchMapV("JobName", jobName))
 	sql.Raw(q).QueryRow(&history)
 	return history
 }
@@ -407,12 +472,12 @@ func GetHistoryData(jobname string) ci.CloudBuildJobHistory {
 更新日志
 2018-01-26 6:29
  */
-func updateBuildLog(history ci.CloudBuildJobHistory, logsr string) {
-	if len(logsr) < 10 {
+func updateBuildLog(history ci.CloudBuildJobHistory, logsR string) {
+	if len(logsR) < 10 {
 		return
 	}
-	history.BuildLogs = logsr
-	success := strings.Split(logsr, "完成构建...")
+	history.BuildLogs = logsR
+	success := strings.Split(logsR, "完成构建...")
 	if len(success) > 1 {
 		t := strings.Split(success[1], "\n")
 		finishTime := util.TimeToStamp(t[0])
@@ -429,8 +494,8 @@ func updateBuildLog(history ci.CloudBuildJobHistory, logsr string) {
 
 // 完成后更新数据
 // 2018-01-26 20:27
-func updateBuildResult(history ci.CloudBuildJobHistory, logsr string, jobData ci.CloudBuildJob, cl kubernetes.Clientset) {
-	updateBuildLog(history, logsr)
+func updateBuildResult(history ci.CloudBuildJobHistory, logsR string, jobData ci.CloudBuildJob, cl kubernetes.Clientset) {
+	updateBuildLog(history, logsR)
 	searchMap := sql.SearchMap{}
 	searchMap.Put("JobId", jobData.JobId)
 	jobData.BuildStatus = history.BuildStatus
@@ -449,22 +514,22 @@ func GetJobLogs(jobData ci.CloudBuildJob) string {
 		logs.Info("获取到开始构建")
 		return history.BuildLogs
 	}
-	logsr := k8s.GetJobLogs(cl, history.JobName, util.Namespace("job", "job"))
-	if logsr == "" {
-		logsr = "没有找到日志<span style='display:none;'></span>"
-		return logsr
+	logsR := k8s.GetJobLogs(cl, history.JobName, util.Namespace("job", "job"), 200000)
+	if logsR == "" {
+		logsR = "没有找到日志<span style='display:none;'></span>"
+		return logsR
 	}
 
-	if strings.Contains(logsr, "构建完成") || strings.Contains(logsr, "构建失败") {
+	if strings.Contains(logsR, "构建完成") || strings.Contains(logsR, "构建失败") {
 		history.BuildStatus = "构建失败"
-		if strings.Contains(logsr, "构建完成") {
+		if strings.Contains(logsR, "构建完成") {
 			history.BuildStatus = "构建成功"
 		}
-		updateBuildResult(history, logsr, jobData, cl)
+		updateBuildResult(history, logsR, jobData, cl)
 		go registry.UpdateGroupImageInfo()
 	}
-	updateBuildLog(history, logsr)
-	return logsr
+	updateBuildLog(history, logsR)
+	return logsR
 }
 
 // 执行任务计划
@@ -472,29 +537,31 @@ func GetJobLogs(jobData ci.CloudBuildJob) string {
 // @router /api/ci/job/logs/:id:int [get]
 func (this *JobController) JobLogs() {
 	jobData := getJobData(this)
-	logsr := GetJobLogs(jobData)
-	this.Ctx.WriteString(logsr)
+	logs := GetJobLogs(jobData)
+	this.Ctx.WriteString(logs)
 }
 
 // 2018-02-08 12:26
 // 获取job参数
-func getJobParam(jobData ci.CloudBuildJob,jobname string, registryServer string, groupData registry2.CloudRegistryServer) k8s.JobParam{
+func getJobParam(jobData ci.CloudBuildJob, jobName string, registryServer string, groupData registry2.CloudRegistryServer) k8s.JobParam {
 	master, port := hosts.GetMaster(jobData.ClusterName)
 	param := k8s.JobParam{
 		Master:         master,
 		Port:           port,
-		Jobname:jobname,
+		Jobname:        jobName,
 		Itemname:       jobData.ItemName,
 		RegistryServer: registryServer,
 		Version:        jobData.LastTag,
 		Timeout:        jobData.TimeOut,
 		Dockerfile:     jobData.Content,
+		Script:         jobData.Script,
 		RegistryGroup:  jobData.RegistryServer,
-		Images: jobData.BaseImage,
+		Images:         jobData.BaseImage,
+		Env:            jobData.Env,
 	}
 	registryServers := registry.GetRegistryServer(groupData.ServerDomain)
 
-	var authuser string
+	var authUser string
 	if len(registryServers) > 0 {
 		access := strings.Split(groupData.ServerAddress, ":")
 		if len(access) > 1 {
@@ -502,24 +569,24 @@ func getJobParam(jobData ci.CloudBuildJob,jobname string, registryServer string,
 			param.RegistryServer = groupData.ServerDomain + ":" + access[1]
 		}
 		logs.Info("获取到镜像服务器地址", registryServers)
-		authuser = registryServers[0].Admin + ":" + util.Base64Decoding(registryServers[0].Password)
+		authUser = registryServers[0].Admin + ":" + util.Base64Decoding(registryServers[0].Password)
 		param.RegistryDomain = registryServers[0].ServerDomain
 	}
 
-	param.Auth = util.Base64Encoding(authuser)
+	param.Auth = util.Base64Encoding(authUser)
 	return param
 }
 
-
 // 2018-02-08 12:30
 // 插入历史数据
-func writeJobHistory(jobData ci.CloudBuildJob, jobId string, username string, registryServer string)  {
+func writeJobHistory(jobData ci.CloudBuildJob, jobId string, username string, registryServer string) {
 	history := ci.CloudBuildJobHistory{
 		ImageTag:       jobData.LastTag,
 		JobName:        jobId,
 		JobId:          jobData.JobId,
 		ItemName:       jobData.ItemName,
 		DockerFile:     jobData.Content,
+		Script:         jobData.Script,
 		BuildStatus:    "构建中",
 		BuildLogs:      "开始构建",
 		RegistryGroup:  jobData.RegistryServer,
@@ -527,6 +594,7 @@ func writeJobHistory(jobData ci.CloudBuildJob, jobId string, username string, re
 		CreateTime:     util.GetDate(),
 		ClusterName:    jobData.ClusterName,
 		RegistryServer: registryServer,
+		Env:            jobData.Env,
 	}
 	i := sql.InsertSql(history, ci.InsertCloudBuildJobHistory)
 	sql.Raw(i).Exec()
@@ -534,14 +602,8 @@ func writeJobHistory(jobData ci.CloudBuildJob, jobId string, username string, re
 
 // 2018-02-03 22:13
 // 执行构建任务
-func JobExecStart(jobData ci.CloudBuildJob, username string, jobname string, registryAuth string) string {
-	if jobData.DockerFile != "0" {
-		file := GetDockerfileData(jobData.DockerFile)
-		if len(file) > 0 {
-			jobData.Content = file[0].Content
-		}
-	}
-
+func JobExecStart(jobData ci.CloudBuildJob, username string, jobName string, registryAuth string) string {
+	jobData = updateJobContent(jobData)
 	// 按时间戳自动生成
 	jobData.LastTag = jobData.ImageTag
 	if jobData.ImageTag == "000" {
@@ -551,14 +613,18 @@ func JobExecStart(jobData ci.CloudBuildJob, username string, jobname string, reg
 	}
 	logs.Info("jobData", util.ObjToString(jobData))
 
-	groupData := registry.GetRegistryGroup(jobData.RegistryServer, jobData.ClusterName)
+	groupData, nodeIp, authServer, authDomain := registry.GetRegistryGroup(jobData.RegistryServer, jobData.ClusterName)
 	if groupData.ServerAddress == "" {
 		logs.Error("获取仓库服务失败", groupData)
 		return ""
 	}
 	logs.Info("获取到仓库地址", groupData)
 
-	param := getJobParam(jobData, jobname, groupData.ServerAddress, groupData)
+	param := getJobParam(jobData, jobName, groupData.ServerAddress, groupData)
+	param.RegistryIp = nodeIp
+	param.AuthServerIp = authServer
+	param.AuthServerDomain = authDomain
+	param.Script = jobData.Script
 	param.ClusterName = jobData.ClusterName
 	if registryAuth != "" {
 		param.RegistryAuth = registryAuth
@@ -571,7 +637,7 @@ func JobExecStart(jobData ci.CloudBuildJob, username string, jobname string, reg
 	searchMap.Put("JobId", jobData.JobId)
 	u := sql.UpdateSql(jobData,
 		ci.UpdateCloudBuildJob,
-		searchMap, ci.UpdateCloudBuildJobExclude)
+		searchMap, ci.UpdateCloudBuildJobExclude1)
 	sql.Raw(u).Exec()
 	return jobId
 }
@@ -582,29 +648,47 @@ func JobExecStart(jobData ci.CloudBuildJob, username string, jobname string, reg
 func (this *JobController) JobExec() {
 
 	jobData := getJobData(this)
+	if jobData.JobId == 0 {
+		setJson(this, util.ApiResponse(false, "无权限"))
+		return
+	}
 	logs.Info("获取到job数据", util.ObjToString(jobData))
 	// 创建私密文件
 	param := k8s.ServiceParam{}
 	param.Image = jobData.BaseImage
 	param.Namespace = util.Namespace("job", "job")
-	cl,_ := k8s.GetClient(jobData.ClusterName)
+	cl, _ := k8s.GetClient(jobData.ClusterName)
 	param.Cl3 = cl
 	param = app.CreateSecretFile(param)
-	jobname := "job-" + util.Md5Uuid()
-	JobExecStart(jobData, getUser(this), jobname, param.Registry)
+	jobName := "job-" + util.Md5Uuid()
+	JobExecStart(jobData, getUser(this), jobName, param.Registry)
 	data, msg := util.SaveResponse(nil, "构建中")
 	util.SaveOperLog(this.GetSession("username"), *this.Ctx, "保存构建任务配置 "+msg, jobData.ItemName)
 	setJson(this, data)
 }
 
 // 任务计划超时更新
-func updateTimeOutJob()  {
+func updateTimeOutJob() {
 	jobHistory := make([]ci.CloudBuildJobHistory, 0)
 	sql.Raw(ci.SelectJobTimeout).QueryRows(&jobHistory)
-	for _, v := range jobHistory{
-		if util.TimeToStamp(util.GetDate()) - util.TimeToStamp(v.CreateTime) > v.BuildTime {
+	for _, v := range jobHistory {
+		if util.TimeToStamp(util.GetDate())-util.TimeToStamp(v.CreateTime) > v.BuildTime {
 			q := ci.UpdateCloudBuildJobTimeout + util.ObjToString(v.HistoryId)
 			sql.Raw(q).Exec()
 		}
 	}
+}
+
+// 2018-08-22 09;25
+// 清除无效的job
+func ClearJob()  {
+	clusters := cluster.GetClusterName()
+	for _, v := range clusters {
+		cl, err := k8s.GetClient(v.ClusterName)
+		if err != nil {
+			continue
+		}
+		k8s.ClearJob(cl)
+	}
+
 }

@@ -1,7 +1,7 @@
 <div id="add_post_html" class="modal fade " tabindex="-1" role="dialog" aria-labelledby="myModalLabel"
      aria-hidden="true"
      style="display: none;">
-    <div class="modal-dialog ">
+    <div class="modal-dialog "  >
         <div class="modal-content p-0 b-0 ">
             <div class="panel panel-color panel-default">
                 <div class="panel-heading">
@@ -52,6 +52,18 @@
                             </div>
                             <div class="col-md-12 top10">
                                 <div class="form-group">
+                                    <label for="field-14" class="col-md-3 fw100 control-label">版本选择</label>
+                                    <div class="col-md-9" id="field-14">
+                                        <select class="selectpicker"
+                                                onchange="changeImg($(this).val())"
+                                                data-live-search="true" data-style="btn-default"
+                                                id="select-image-id">
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-12 top10">
+                                <div class="form-group">
                                     <label for="field-15" class="col-md-3 fw100 control-label">升级间隔</label>
                                     <div class="col-md-9" id="field-15">
                                         <input type="number" min="2" max="60" placeholder="更新间隔时间 2~60s"
@@ -80,5 +92,22 @@
     var n = $("#update_interval_id").val();
     if (n == 0) {
         $("#update_interval_id").val(10);
+    }
+
+    var imgs = '<option>--请选择--</option>{{.images}}';
+    console.log(imgs)
+    $("#select-image-id").html(imgs);
+    $('.selectpicker').selectpicker({
+        //初始化
+        size: 5
+    });
+
+    /**
+     * 修改镜像
+     * @param val
+     */
+    function changeImg(val) {
+       var odl =  $('#update_image_version_id').val().split(":")[0];
+        $('#update_image_version_id').val(odl + ":" + val)
     }
 </script>

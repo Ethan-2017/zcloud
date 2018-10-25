@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"github.com/astaxie/beego/logs"
 	"reflect"
+	"database/sql"
 )
 
 func StringToUpper(str string) string {
@@ -132,6 +133,9 @@ func getValue(v interface{}) string {
 
 func getSql(searchMap map[string]interface{}, k string, tempSql string, connect string) string {
 	v := searchMap[k]
+	if v == nil {
+		return tempSql
+	}
 	k = StringToLower(k)
 	switch v.(type) {
 	case int:
@@ -185,6 +189,13 @@ func UpdateSql(obj interface{}, sql string, data SearchMap, extCloumnt string) s
 	updateSql = updateSql[0:len(updateSql)-1]
 	tempSql = sql + " set " + updateSql + " " + whereSql
 	return getReturnSql(tempSql)
+}
+
+func GetWhere(searchSql string, searchMap SearchMap) string  {
+	if len(searchMap.GetData()) == 0 {
+		searchSql += " where 1=1 "
+	}
+	return  searchSql
 }
 
 func getSearchSql(obj interface{}, sql string, data SearchMap) string {
@@ -440,6 +451,12 @@ func Raw(q string) orm.RawSeter {
 	return o.Raw(q)
 }
 
+// 执行sql语句
+func Exec(q string) (sql.Result, error) {
+	o := GetOrm()
+	return o.Raw(q).Exec()
+}
+
 func getParam(req *http.Request, key string) string {
 	req.ParseForm()
 	var id = ""
@@ -476,6 +493,10 @@ func GetSearchMap(key string, ctx context.Context) SearchMap {
 	}
 	if id != "" {
 		searchMap.Put(key, id)
+	}
+	str := ctx.Input.Param(":hi")
+	if str != "" {
+		searchMap.Put(key, str)
 	}
 	return searchMap
 }

@@ -26,7 +26,17 @@ function execPipeline(pipelineId) {
     setTimeout(function () {
         loadPipelineData();
     }, 5000);
+    loadContainer(pipelineId);
     return result;
+}
+
+/**
+ * 2018-09-07 08:41
+ * 加载容器状态数据
+ */
+function loadContainer(id) {
+    var url = "/pipeline/container/" + id;
+    window.open(url, "_blank");
 }
 
 
@@ -45,7 +55,7 @@ function deletePipelineSwal(id, detail) {
  * @param id
  */
 function startExecPipeline(id) {
-    Swal("是否执行该流水线", "warning", "确认操作", "不操作", "成功", "失败", " execPipeline(" + id + ")", "loadPipelineData()");
+    Swal("是否执行该流水线,返回成功后, 请等待几秒钟后再查看日志", "warning", "确认操作", "不操作", "成功", "失败", " execPipeline(" + id + ")", "loadPipelineData()");
 }
 
 /**
@@ -72,10 +82,10 @@ function loadPipelineData(key) {
         "processing": true,
         "bPaginate": true, //是否显示（应用）分页器
         "serverSide": true,
-        "bLengthChange": false,
+        "bLengthChange": true,
         "bInfo": true, //是否显示页脚信息，DataTables插件左下角显示记录数
         "scrollX": true, // 是否允许左右滑动
-        "displayLength": 10, // 默认长度
+        "displayLength": 100, // 默认长度
         "ajax": { // 请求地址
             "url": "/api/pipeline?t=" + new Date().getTime() + "&search=" + key,
             "type": 'get'
@@ -100,19 +110,23 @@ function loadPipelineData(key) {
                 if(full["Status"] == "false"){
                     return "<span class='Fail'>"+data+"</span><br><span class='text-default FailTop5'>服务不存在</span>"
                 }
-                return "<span class='Running'>"+data+"</span>"
+                return "<span class='Running'><a target='_blank' href='/application/service/list'>"+data+"</a></span>"
             }
             },
             {"data": "JobName", "sWidth": "9%"},
-            {"data": "Description", "sWidth": "10%"},
+            {"data": "Description", "sWidth": "8%"},
             {"data": "LastModifyTime", "sWidth": "9%"},
             {
-                "data": "PipelineId", "sWidth": "9%", "mRender": function (data, type, full) {
+                "data": "PipelineId", "sWidth": "6%", "mRender": function (data, type, full) {
+                   return '<button type="button" title="立刻构建" onclick="startExecPipeline(' + data + ')" class="btn btn-xs rb-btn-oper"><i class="fa fa-transgender-alt"></i></button>&nbsp;' +
+                       '<button type="button" title="最近流水线日志" onclick="loadContainer(' + data + ')" class="btn btn-xs rb-btn-oper"><i class="fa  fa-hospital-o"></i></button>&nbsp;' +
+                       '<button type="button"  title="流水线历史" onClick="buildHistory(' + data + ')" class="delete-groups btn btn-xs rb-btn-oper"><i class="fa fa-history"></i></button>';
+                }
+            },
+            {
+                "data": "PipelineId", "sWidth": "5%", "mRender": function (data, type, full) {
                 return '<button type="button" title="更新" onclick="addPipeline(' + data + ')" class="btn btn-xs rb-btn-oper"><i class="fa fa-pencil"></i></button>&nbsp;' +
-                    '<button type="button" title="立刻构建" onclick="startExecPipeline(' + data + ')" class="btn btn-xs rb-btn-oper"><i class="fa fa-transgender-alt"></i></button>&nbsp;' +
-                    '<button type="button" title="最近流水线日志" onclick="jobLog(' + full["JobId"] + ')" class="btn btn-xs rb-btn-oper"><i class="fa  fa-hospital-o"></i></button>&nbsp;' +
-                    '<button type="button"  title="删除" onClick="deletePipelineSwal(' + data + ')" class="delete-groups btn btn-xs rb-btn-oper"><i class="fa fa-trash-o"></i></button>&nbsp;' +
-                    '<button type="button"  title="流水线历史" onClick="buildHistory(' + data + ')" class="delete-groups btn btn-xs rb-btn-oper"><i class="fa fa-history"></i></button>';
+                    '<button type="button"  title="删除" onClick="deletePipelineSwal(' + data + ')" class="delete-groups btn btn-xs rb-btn-oper"><i class="fa fa-trash-o"></i></button>&nbsp;' ;
             }
             },
         ],
@@ -170,7 +184,7 @@ function savePipeline(pipelineId) {
     var data = get_form_data();
 
     data["PipelineId"] = parseInt(pipelineId);
-    if (!checkValue(data, "JobName,ServiceName,AppName,PipelineName,ClusterName,ExecTime")) {
+    if (!checkValue(data, "JobName,ServiceName,AppName,PipelineName,ClusterName")) {
         return
     }
     if ($("#setSelectFailAction1").is(":checked")) {
@@ -236,23 +250,23 @@ function loadPipelineHistoryData(key) {
         },
         "columns": [ // 数据映射
             {
-                "data": "PipelineName", "sWidth": "8%", "mRender": function (data, type, full) {
+                "data": "PipelineName", "mRender": function (data, type, full) {
                     var jobname = full["JobName"];
                 return "<a href='/pipeline/detail/" + jobname+ "?JobName="+jobname+"'>" + data + "</a><br>" + full["ClusterName"]
             }
             },
             {
-                "data": "ServiceName", "sWidth": "9%", "mRender": function (data, type, full) {
+                "data": "ServiceName",  "mRender": function (data, type, full) {
                 return "<a href='/application/app/list'>" + full["AppName"] + "</a><br><a style='color:#ffa91c ;' href='/application/service/list'>" + data+"</a>";
             }
             },
+            // {
+            //     "data": "JobName",  "mRender": function (data) {
+            //     return "<div style='word-wrap:break-word'>" + data + "</div>";
+            // }
+            // },
             {
-                "data": "JobName", "sWidth": "17%", "mRender": function (data) {
-                return "<div style='word-wrap:break-word'>" + data + "</div>";
-            }
-            },
-            {
-                "data": "Status", "sWidth": "7%", "mRender": function (data) {
+                "data": "Status", "mRender": function (data) {
                 if (data == "执行失败") {
                     return "<span class='Fail'>" + data + "</span>"
                 }
@@ -260,14 +274,15 @@ function loadPipelineHistoryData(key) {
             }
             },
             {
-                "data": "RunTime", "sWidth": "8%", "mRender": function (data) {
+                "data": "RunTime", "mRender": function (data) {
                 return "<span class='left10'>" + data + "</span>";
             }
             },
-            {"data": "StartTime", "sWidth": "8%"},
-            {"data": "EndTime", "sWidth": "7%"},
+            {"data": "StartTime"},
+            {"data": "EndTime"},
+            {"data": "CreateUser"},
             {
-                "data": "JobId", "sWidth": "9%", "mRender": function (data, type,full) {
+                "data": "JobId",  "mRender": function (data, type,full) {
                 var r = '<button type="button"  title="流水线日志" onClick="jobnameLog(' + data + ',\''+full["JobName"]+'\')" class="delete-groups btn btn-xs rb-btn-oper left10"><i class="fa fa-hospital-o"></i></button>&nbsp;' +
                     '<button type="button"  title="Dockerfile" onClick="showPipelineDockerfile(\'' + full["JobName"] + '\')" class="delete-groups btn btn-xs rb-btn-oper "><i class=" mdi mdi-file-tree"></i></button>&nbsp;'
                 return r;

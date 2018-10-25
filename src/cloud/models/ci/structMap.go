@@ -1,37 +1,38 @@
 package ci
 
-const SelectCloudCodeRepostitory = "select create_time,create_user,description,code_url,code_source,username,gitlab_token,type,repostitory_id,last_modify_time,last_modify_user,password from cloud_code_repostitory"
+const SelectCloudCodeRepostitory = "select create_time,tag, branch, create_user,description,code_url,code_source,username,gitlab_token,type,repostitory_id,last_modify_time,last_modify_user,password from cloud_code_repostitory"
 const UpdateCloudCodeRepostitory = "update cloud_code_repostitory"
 const InsertCloudCodeRepostitory = "insert into cloud_code_repostitory"
 const DeleteCloudCodeRepostitory = "delete from cloud_code_repostitory"
 const SelectCloudCodeRepostitoryWhere  = ` where 1=1 and (code_url like "%?%" or description like "%?%" or create_user like "%?%")`
 
-const SelectCloudCiDockerfile = "select last_modify_user,description,is_del,file_id,content,create_time,create_user,name,last_modify_time from cloud_ci_dockerfile"
+const SelectCloudCiDockerfile = "select last_modify_user,description,is_del,file_id,content,script,create_time,create_user,name,last_modify_time from cloud_ci_dockerfile"
 const UpdateCloudCiDockerfile = "update cloud_ci_dockerfile"
 const UpdateDockerfileExclude  = "CreateTime,CreateDockerFile"
 const InsertCloudCiDockerfile = "insert into cloud_ci_dockerfile" 
 const DeleteCloudCiDockerfile = "delete from cloud_ci_dockerfile"
 const SelectDockerfiles  = "select file_id from cloud_ci_dockerfile where create_user in (?)"
-const SelectDockerfileWhere = ` and (name like "%?%" or description like "%?" or content like "?")`
+const SelectDockerfileWhere = ` and (name like "%?%" or description like "%?" or content like "%?%" or script like "%?%" )`
 
 
 
 
-const SelectCloudBuildJob = "select base_image,description,last_tag,content,time_out,last_modify_user,job_code,docker_file,create_user,build_status,job_name,create_time,build_id,last_build_time,job_id,registry_server,last_modify_time,item_name,image_tag,cluster_name from cloud_build_job"
+const SelectCloudBuildJob = "select base_image,env,description,last_tag,content,time_out,last_modify_user,script,job_code,docker_file,create_user,build_status,job_name,create_time,build_id,last_build_time,job_id,registry_server,last_modify_time,item_name,image_tag,cluster_name from cloud_build_job"
 const UpdateCloudBuildJob = "update cloud_build_job"
 const UpdateCloudBuildJobExclude2 = "CreateTime,CreateUser,RegistryServer,ClusterName"
 const InsertCloudBuildJob = "insert into cloud_build_job" 
 const DeleteCloudBuildJob = "delete from cloud_build_job"
-const UpdateCloudBuildJobExclude  = "ImageTag,CreateTime,CreateUser,DockerFile,Content,TimeOut,BaseImage"
+const UpdateCloudBuildJobExclude  = "ImageTag,CreateTime,CreateUser,DockerFile,Content,TimeOut,BaseImage,Script,Env,LastTag"
+const UpdateCloudBuildJobExclude1  = "ImageTag,CreateTime,CreateUser,DockerFile,Content,TimeOut,BaseImage,Script,Env"
 const SelectCloudBuildJobWhere  =  ` and (item_name like "%?%" or description like "%?%" or create_user like "%?%")`
 const SelectUserJobs  = "select job_id from cloud_build_job where create_user in (?)"
 
 const SelectCloudBuildJobHistoryDockerfile  = "select docker_file from cloud_build_job_history"
-const SelectCloudBuildJobHistory = "select base_image,registry_server,history_id,registry_group,job_name,create_time,build_time,item_name,image_tag,cluster_name,create_user,build_status,build_logs,job_id,docker_file from cloud_build_job_history"
+const SelectCloudBuildJobHistory = "select base_image,env,registry_server,history_id,registry_group,job_name,create_time,build_time,script,item_name,image_tag,cluster_name,create_user,build_status,build_logs,job_id,docker_file from cloud_build_job_history"
 const UpdateCloudBuildJobHistory = "update cloud_build_job_history"
 const InsertCloudBuildJobHistory = "insert into cloud_build_job_history"
 const SelectBuildJobToApp  = "select history_id, registry_server, registry_group, item_name,image_tag from cloud_build_job_history"
-const ExcludeUpdateHistoryColumn = "JobId,JobName,CreateTime,CreateUser,ImageTag,ClusterName,ImageTag,DockerFile,RegistryServer,ItemName,RegistryGroup"
+const ExcludeUpdateHistoryColumn = "JobId,JobName,CreateTime,CreateUser,ImageTag,ClusterName,ImageTag,DockerFile,RegistryServer,ItemName,RegistryGroup,Script,Env"
 const SelectBuildHistoryWhere =` and (job_name like "%?%" or build_logs like "%?%" or item_name like "%?%" or create_user like "%?%")`
 const SelectJobTimeout = "select  history_id,a.create_time, b.time_out as build_time from cloud_build_job_history a, cloud_build_job b where a.build_status='构建中' and a.job_id=b.job_id"
 const UpdateCloudBuildJobTimeout = "update cloud_build_job_history set build_status='构建超时' where history_id="
@@ -64,3 +65,8 @@ const SelectCloudCiPermWhere = ` where dates like "%?%"`
 const UpdateCloudCiPerm = "update cloud_ci_perm"
 const InsertCloudCiPerm = "insert into cloud_ci_perm" 
 const DeleteCloudCiPerm = "delete from cloud_ci_perm" 
+
+const SelectCloudCiBatchJob = "select ent,build_type,last_modify_user,cluster,version,build_status,percent,batch_id,job_ids,create_time,create_user,last_modify_time,messages,batch_name,build_id,description from cloud_ci_batch_job"
+const UpdateCloudCiBatchJob = "update cloud_ci_batch_job"
+const InsertCloudCiBatchJob = "insert into cloud_ci_batch_job" 
+const DeleteCloudCiBatchJob = "delete from cloud_ci_batch_job" 

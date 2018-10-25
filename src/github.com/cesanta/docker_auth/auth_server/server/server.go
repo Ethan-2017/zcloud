@@ -42,6 +42,7 @@ import (
 	"strconv"
 	"github.com/garyburd/redigo/redis"
 	"cloud/cache"
+	registry2 "cloud/controllers/image"
 )
 
 var (
@@ -277,14 +278,14 @@ func getUsernameSql(username string) string {
 // 获取用户权限
 // 2018-01-20 8:08
 func getPermissions(ai *authz.AuthRequestInfo) []registry.CloudRegistryPermissions {
-	permission := []registry.CloudRegistryPermissions{}
+	permission := make([]registry.CloudRegistryPermissions, 0)
 	likesql := GetLikeProjectSql(ai)
 	// 查询对象和用户的权限
 	services := strings.Split(ai.Service, ".")
 	if len(services) < 2 {
 		services = append(services, "")
 	}
-	searchMap := sql.GetSearchMapV("ServiceName", services[0], "ClusterName", services[1])
+	searchMap := sql.GetSearchMapV("ClusterName", services[1])
 	q := sql.SearchSql(registry.CloudRegistryPermissions{}, registry.SelectCloudRegistryPermissions, searchMap)
 	q += likesql
 
@@ -344,9 +345,23 @@ func SelectUserPermissions(ai *authz.AuthRequestInfo) []string {
 	}
 	for k := range set.GetData() {
 		actions = append(actions, k)
+		// 有push操作时触发更新镜像信息
+		if k == "push" {
+			go updateImageInfo()
+		}
 	}
 	return actions
 }
+
+// 2018-08-29 08:49
+func updateImageInfo()  {
+	time.Sleep(time.Second * 15)
+	for i :=0 ;i < 5 ; i ++ {
+		registry2.UpdateGroupImageInfo()
+		time.Sleep(time.Second * 10)
+	}
+}
+
 
 // 验证用户权限
 func (as *AuthServer) authorizeScope(ai *authz.AuthRequestInfo) ([]string, error) {
@@ -371,7 +386,7 @@ func (as *AuthServer) authorizeScope(ai *authz.AuthRequestInfo) ([]string, error
 
 func (as *AuthServer) Authorize(ar *authRequest) ([]authzResult, error) {
 
-	ares := []authzResult{}
+	ares := make([]authzResult, 0)
 	for _, scope := range ar.Scopes {
 		ai := &authz.AuthRequestInfo{
 			Account: ar.Account,
@@ -475,7 +490,7 @@ func (as *AuthServer) doIndex(rw http.ResponseWriter, req *http.Request) {
 func (as *AuthServer) doAuth(rw http.ResponseWriter, req *http.Request) {
 	ar, err := as.ParseRequest(req)
 
-	ares := []authzResult{}
+	ares := make([]authzResult, 0)
 	if err != nil {
 		logs.Warn("Bad request: %s", err)
 		http.Error(rw, fmt.Sprintf("Bad request: %s", err), http.StatusBadRequest)

@@ -48,8 +48,8 @@ function get(paramter, url) {
 }
 //获取from数据
 function get_form_data() {
-    var result = {}
-    var forch = ["input", "textarea", "select"]
+    var result = {};
+    var forch = ["input", "textarea", "select"];
     for (i = 0; i < forch.length; i++) {
         $.each($("form " + forch[i]),
             function (name, object) {
@@ -62,7 +62,7 @@ function get_form_data() {
 
 function loginOut() {
     var url = "/api/user/logout";
-    post({}, url)
+    post({}, url);
     setTimeout(function () {
         window.location.href = "/login"
     }, 2000)
@@ -83,8 +83,8 @@ function checkChange(keys, type) {
  * @param obj
  */
 function checkYaml(data) {
-    var url = "/api/template/yaml/check"
-    var result = post({yaml: data["Yaml"]}, url)
+    var url = "/api/template/yaml/check";
+    var result = post({yaml: data["Yaml"]}, url);
     if (result == "true") {
         return true
     }
@@ -100,7 +100,7 @@ function checkDockerInstallDir(str) {
     if (str.length < 3) {
         return false
     }
-    var regEx = /^([\/][\w-]+)*$/i
+    var regEx = /^([\/][\w-]+)*$/i;
     if (regEx.test(str)) {
         return true
     }
@@ -118,7 +118,7 @@ function checkImageTag(str) {
     if (str.length < 3) {
         return false
     }
-    var regEx =  /^[0-9a-zA-Z]*$/i
+    var regEx =  /^[0-9a-zA-Z]*$/i;
     if (regEx.test(str)) {
         return true
     }
@@ -199,7 +199,7 @@ function checkAppNameService(str) {
     var regEx = /^[a-zA-Z]\w{2,35}/;
     if (regEx.test(str)) {
         var url = "/api/service/name?AppName=" + str + "&ClusterName=" + cluster+"&ServiceName="+serviceName;
-        var data = get({}, url)
+        var data = get({}, url);
         if (data.length == 0) {
             return true;
         }
@@ -250,9 +250,9 @@ function checkNetworkCart(str) {
 
 
 function setInputOk(obj) {
-    obj.css("font-size", "14px")
-    obj.css("border", "1px solid #f0f0f0")
-    obj.css("background-color", "#ffffff")
+    obj.css("font-size", "14px");
+    obj.css("border", "1px solid #f0f0f0");
+    obj.css("background-color", "#ffffff");
     obj.removeAttr("title")
 }
 
@@ -260,15 +260,15 @@ function setInputError(obj, key) {
     if (!obj) {
         return;
     }
-    obj.css("border", "1px solid #f16a7c")
-    obj.css("background-color", "#fffff6")
-    obj.css("font-size", "12px")
+    obj.css("border", "1px solid #f16a7c");
+    obj.css("background-color", "#fffff6");
+    obj.css("font-size", "12px");
 
-    var err = obj.attr(key)
+    var err = obj.attr(key);
     if (!err && key == "nullmsg") {
         err = "该项目必须填写"
     }
-    obj.attr("placeholder", err)
+    obj.attr("placeholder", err);
     obj.attr("title", err)
 }
 
@@ -286,21 +286,21 @@ function checkValue(data, keys, type) {
     if (!type) {
         type = "input"
     }
-    keys = keys.split(",")
+    keys = keys.split(",");
     for (var i = 0; i < keys.length; i++) {
-        var b = $(type + "[name='" + keys[i] + "']")
+        var b = $(type + "[name='" + keys[i] + "']");
 
         if (data[keys[i]]) {
-            var checkFunc = b.attr("validFunc")
+            var checkFunc = b.attr("validFunc");
             if (checkFunc) {
-                var evalfun = checkFunc + "('" + data[keys[i]] + "')"
+                var evalfun = checkFunc + "('" + data[keys[i]] + "')";
 
-                var check = eval(evalfun)
+                var check = eval(evalfun);
                 if (check) {
                     setInputOk(b)
                 } else {
-                    console.log(b)
-                    setInputError(b, "errmsg")
+                    console.log(b);
+                    setInputError(b, "errmsg");
                     return false
                 }
             } else {
@@ -308,8 +308,8 @@ function checkValue(data, keys, type) {
             }
             continue
         } else {
-            console.log(b)
-            setInputError(b, "nullmsg")
+            console.log(b);
+            setInputError(b, "nullmsg");
             return false
         }
     }
@@ -318,7 +318,7 @@ function checkValue(data, keys, type) {
 
 function success(msg) {
     $("#success-info-html-id").show();
-    $("#success-info-id").html(msg)
+    $("#success-info-id").html(msg);
     setTimeout(function () {
         $("#success-info-html-id").hide();
     }, 5000)
@@ -326,7 +326,7 @@ function success(msg) {
 
 function faild(msg) {
     $("#faild-info-html-id").show();
-    $("#faild-info-id").html(msg)
+    $("#faild-info-id").html(msg);
     setTimeout(function () {
         $("#faild-info-html-id").hide();
     }, 5000)
@@ -448,7 +448,7 @@ function getClusterName(alias) {
  * 2018-01-04
  */
 function loadClusterSelect(id,nil, select) {
-    var url = "/api/cluster/name"
+    var url = "/api/cluster/name";
     var html = ""
     if (nil){
         html += "<option>--请选择--</option>"
@@ -456,9 +456,9 @@ function loadClusterSelect(id,nil, select) {
     if(select){
         html += "<option value='"+select+"'>"+getClusterAlias(select)+"</option>";
     }
-    var result = get({}, url)
+    var result = get({}, url);
     //  先获取cookie选择好的
-    var cluster = getClusterName()
+    var cluster = getClusterName();
     for (var i = 0; i < result.length; i++) {
         if (!cluster) {
             cluster = setSelectCluster(result[i]["ClusterName"])
@@ -468,7 +468,7 @@ function loadClusterSelect(id,nil, select) {
     if (html.length < 5) {
         html = "<option>还没有集群哦</option>"
     }
-    $("#"+id).html(html)
+    $("#"+id).html(html);
     $("#cluster_data").val(JSON.stringify(result))
 }
 
@@ -638,10 +638,14 @@ function checkBoxChange(obj) {
  * @param failmsg
  * @param func
  * @param reload
+ * @param timer
  */
-function Swal(title,type,yes,no,okmsg, failmsg, func, reload) {
+function Swal(title,type,yes,no,okmsg, failmsg, func, reload, timer) {
     if(!type){
         type  = "warning"
+    }
+    if (!timer){
+        timer = 7000;
     }
     !function ($) {
         "use strict";
@@ -656,6 +660,7 @@ function Swal(title,type,yes,no,okmsg, failmsg, func, reload) {
                 title: title,
                 text: "",
                 type: type,
+
                 showCancelButton: true,
                 confirmButtonText: yes,
                 cancelButtonText: no,
@@ -664,12 +669,15 @@ function Swal(title,type,yes,no,okmsg, failmsg, func, reload) {
                 buttonsStyling: false
             }).then(function () {
                 success("已发送请求");
-                var result = eval(func)
-                if (result.indexOf(okmsg) != -1) {
+                var result = eval(func);
+                if (JSON.stringify(result).indexOf(okmsg) != -1) {
                     swal(
-                        okmsg,
-                        result,
-                        'success'
+                        {
+                            title:okmsg,
+                            text:result,
+                            type:'success',
+                            timer: timer,
+                        },
                     )
                     eval(reload);
                     setTimeout(function () {
@@ -753,7 +761,7 @@ function checkSignValue() {
 // 将选择好的用户设置好
 // 2018-01-20 13:53
 function setSelectUser(users, id) {
-    var html = ""
+    var html = "";
     var users = users.split(",");
     for (var i=0;i<users.length;i++){
         if (users[i]){
@@ -810,6 +818,7 @@ function setUserData(id) {
         id = "select_user_id";
     }
     $('#'+id).val(select + html);
+    $('#'+id).html(select + html);
 }
 
 // 修改状态使用
@@ -850,7 +859,7 @@ function setSelectGroups(groups,id) {
 // 2018-01-21 9:24
 function searchGroups(val, id) {
     var temp = "";
-    var data = $('#select_groups_id').val()
+    var data = $('#select_groups_id').val();
     if(data) {
         data = data.split("\n");
     }else{
@@ -872,18 +881,22 @@ function searchGroups(val, id) {
  * 2018-01-21 9:21
  * 设置组数据
  */
-function setGroupsData(id) {
+function setGroupsData(id, key) {
+    if(!key){
+        key = "GroupsId";
+    }
     var url = "/api/groups/name";
     var result = eval(get({}, url));
     var html = "";
     var select = "";
     for (var i = 0; i < result.length; i++) {
-        html += "<option class='mulgroup' value=" + result[i]["GroupsId"] + ">" + result[i]["GroupsName"] + "</option>\n";
+        html += "<option class='mulgroup' value=" + result[i][key] + ">" + result[i]["GroupsName"] + "</option>\n";
     }
     if(!id){
         id = "select_groups_id";
     }
     $('#'+id).val(select + html);
+    $('#'+id).html(select + html);
 }
 
 

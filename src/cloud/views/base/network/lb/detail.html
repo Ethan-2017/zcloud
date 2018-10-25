@@ -135,10 +135,12 @@
                                     <tr>
                                         <th>服务名称</th>
                                         <th>容器端口</th>
+                                        <th>负载类型</th>
                                         <th>协议</th>
                                         <th>域名</th>
-                                        <th>负载</th>
+                                        <th>负载方式    </th>
                                         <th>证书</th>
+                                        <th>状态</th>
                                         <th>创建时间</th>
                                         <th>操作</th>
                                     </tr>
@@ -185,7 +187,10 @@
                         {"data": "ServiceName"},
                         {"data": "ContainerPort"},
                         {"data": "LbType"},
-                        {"data": "Domain"},
+                        {"data": "Protocol"},
+                        {"data": "Domain","mRender":function (data) {
+                                return '<div style="word-break: break-all"><a target="_blank" href="http://'+data+'">'+data+'</a></div>'
+                        }},
                         {"data": "LbMethod"},
                         {"data": "CertFile","mRender":function (data) {
                             if(data && data=="0"){
@@ -194,9 +199,15 @@
                             return data;
                         }},
                         {"data": "CreateTime"},
+                        {"data": "LbServiceId","mRender":function (data) {
+                         if(!data){
+                             return  '<div class="Fail"><div><i class="fa fa-circle"></i><span>&nbsp;服务已删除</span>&nbsp;'
+                         }
+                            return '<div class="Running"><div><i class="fa fa-circle"></i><span>&nbsp;服务存在</span>'
+                        }},
                         {
                             "sWidth": "150px", "data": "ServiceId", "mRender": function (data, type, full) {
-                            var r = '<button type="button" title="更新" onclick="addLbService(' + data + ')" class="btn btn-xs rb-btn-oper"><i class="fa fa-pencil"></i></button>&nbsp;' +
+                            var r = '<button type="button" title="更新" onclick="addLbService(' + data + ',\''+full["LbId"]+'\')" class="btn btn-xs rb-btn-oper"><i class="fa fa-pencil"></i></button>&nbsp;' +
                                 '<button type="button"  title="删除" onClick="deleteLbServiceSwal(' + data + ')" class="delete-template btn btn-xs rb-btn-oper"><i class="fa fa-trash-o"></i></button>&nbsp;';
                             if (full["LbType"] != "Nginx") {
                                 return r
@@ -222,10 +233,10 @@
                     serviceId = 0
                 }
                 lbName = getValue(lbName);
-                var url = "/base/network/lb/service/add"
-                var result = get({ClusterName: "{{.data.ClusterName}}", ServiceId: serviceId, LbId: lbName}, url)
-                $("#add_lb_service_html").html(result)
-                $("#add_post_html").modal("toggle")
+                var url = "/base/network/lb/service/add";
+                var result = get({ClusterName: "{{.data.ClusterName}}", ServiceId: serviceId, LbId: lbName}, url);
+                $("#add_lb_service_html").html(result);
+                $("#add_post_html").modal("toggle");
                 $("#check-faild-success").html("");
             }
 
@@ -262,7 +273,7 @@
                 var result = JSON.stringify(resultdata);
                 if(result.indexOf("成功") != -1){
                     success(result)
-                    $("#check-faild-success").html("<span class='Running'>配置检查成功<br>保存成功</span>");
+                    $("#check-faild-success").html("<span class='Running'>配置检查成功<br>" +result+ "</span>");
                 }else{
                     if(resultdata["data"]) {
                         var msg =  resultdata["data"].replace(/\n/g,"<br>").replace(/\/usr\/local\/nginx\/conf/g,"");

@@ -31,7 +31,7 @@ func (this *ImageController) RegistryServerAdd() {
 	entData := ent.GetEntnameSelect()
 
 	update := registry.CloudRegistryServer{}
-
+	update.Replicas = 1
 	id := this.GetString("ServerId")
 	// 更新操作
 	if id != "0" {
@@ -39,7 +39,7 @@ func (this *ImageController) RegistryServerAdd() {
 		searchMap := sql.GetSearchMap("UserId", *this.Ctx)
 		q := sql.SearchSql(registry.CloudRegistryServer{}, registry.SelectCloudRegistryServer, searchMap)
 		sql.Raw(q).QueryRow(&update)
-
+		update.Password = util.Base64Decoding(update.Password)
 		this.Data["readonly"] = "readonly"
 		entHtml = util.GetSelectOptionName(update.Entname)
 		clusterHtml = util.GetSelectOptionName(update.ClusterName)
@@ -62,7 +62,10 @@ func deployRegistry(d registry.CloudRegistryServer) error {
 		Port:        port,
 		ClusterName: d.ClusterName,
 		AuthServer:  d.AuthServer,
-		Name:        d.Name}
+		HostPath:    d.HostPath,
+		Name:        d.Name,
+		Replicas:    d.Replicas,
+	}
 	err := k8s.CreateRegistry(param)
 	return err
 }
@@ -95,20 +98,19 @@ func (this *ImageController) RegistryServerSave() {
 	d.Password = util.Base64Encoding(d.Password)
 	searchMap := sql.SearchMap{}
 	searchMap.Put("ServerId", d.ServerId)
-	masterData := []registry.CloudRegistryServer{}
+	masterData := make([]registry.CloudRegistryServer, 0)
 
 	q := sql.SearchSql(d, registry.SelectCloudRegistryServer, searchMap)
 	sql.Raw(q).QueryRows(&masterData)
 
 	util.SetPublicData(d, util.GetUser(this.GetSession("username")), &d)
 
-	this.ServeJSON(false)
 	if d.ServerId > 0 {
 		q = sql.UpdateSql(d, registry.UpdateCloudRegistryServer,
 			searchMap, registry.UpdateRegistryServerExclude)
 		_, err = sql.Raw(q).Exec()
 	} else {
-		serverData := []registry.CloudRegistryServer{}
+		serverData := make([]registry.CloudRegistryServer, 0)
 		search := sql.GetSearchMapV("Name", d.Name, "ClusterName", d.ClusterName)
 		q := sql.SearchSql(
 			registry.CloudRegistryServer{},
@@ -166,7 +168,7 @@ func GetRegistryServerMap() util.Lock {
 // 2018-01-26 10:37
 func GetRegistryServer(name string) []registry.CloudRegistryServer {
 	searchMap := sql.SearchMap{}
-	data := []registry.CloudRegistryServer{}
+	data := make([]registry.CloudRegistryServer, 0)
 	if name != "" && name != "1" {
 		searchMap.Put("ServerDomain", name)
 	}
@@ -177,7 +179,7 @@ func GetRegistryServer(name string) []registry.CloudRegistryServer {
 		searchMap)
 	sql.Raw(searchSql).QueryRows(&data)
 
-	result := []registry.CloudRegistryServer{}
+	result := make([]registry.CloudRegistryServer, 0)
 	for _, v := range data {
 		if name == "" {
 			v.Password = "****"
@@ -203,7 +205,7 @@ func GetRegistrySelect() string {
 // 仓库服务器数据
 // @router /api/registry [get]
 func (this *ImageController) RegistryServer() {
-	data := []registry.CloudRegistryServer{}
+	data := make([]registry.CloudRegistryServer, 0)
 	searchMap := sql.SearchMap{}
 	id := this.Ctx.Input.Param(":id")
 	key := this.GetString("search")
@@ -225,19 +227,25 @@ func (this *ImageController) RegistryServer() {
 
 	num, _ := sql.Raw(searchSql).QueryRows(&data)
 	clusterMap := cluster.GetClusterMap()
-	result := []registry.CloudRegistryServer{}
+	result := make([]registry.CloudRegistryServer, 0)
 	namespace := util.Namespace("registryv2", "registryv2")
 	for _, v := range data {
+		c, _ := k8s.GetClient(v.ClusterName)
+		appData := k8s.GetServicePort(c, namespace, v.Name)
 		if len(v.Access) > 10 {
 			v.Password = "******"
+			if len(appData.Spec.Ports) > 0 {
+				v.Status = "正常"
+			}else{
+				v.Status = "异常"
+			}
 			//v.ClusterName = util.ObjToString(clusterMap.GetV(v.ClusterName))
 			result = append(result, v)
 			continue
 		}
-		c, _ := k8s.GetClient(v.ClusterName)
-		appData := k8s.GetServicePort(c, namespace, v.Name)
 
 		if len(appData.Spec.Ports) > 0 {
+			v.Status = "正常"
 			port := strconv.Itoa(int(appData.Spec.Ports[0].NodePort))
 			v.Access = "容器内&nbsp;<br>" + v.Name + "." + namespace + ":" + port + "<br>"
 			hostdata := hosts.GetClusterHosts(v.ClusterName)
@@ -254,6 +262,8 @@ func (this *ImageController) RegistryServer() {
 					registry.UpdateRegistryServerExcludePass)
 				sql.Raw(u).Exec()
 			}
+		}else{
+			v.Status = "异常"
 		}
 		v.Password = "******"
 		v.ClusterName = util.ObjToString(clusterMap.GetV(v.ClusterName))
